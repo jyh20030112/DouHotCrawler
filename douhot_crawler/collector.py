@@ -1,8 +1,10 @@
 """榜单行解析、详情页采集与分页控制。"""
 
+import gc
 import re
 import sys
 from random import uniform
+from collections.abc import Awaitable, Callable
 
 from playwright.async_api import Locator, Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -10,6 +12,10 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from .comments import fetch_top_comments
 from .config import DETAIL_DELAY_JITTER
 from .models import VideoIdentity, VideoRecord, video_identity
+
+
+PagePersistor = Callable[[list[VideoRecord], int], Awaitable[None]]
+StopRequested = Callable[[], bool]
 
 
 async def extract_video_list_fields(row: Locator, title: str) -> dict[str, str]:
@@ -128,10 +134,12 @@ async def collect_all_video_details(
     page: Page,
     known_identities: set[VideoIdentity],
     detail_delay: float,
-) -> tuple[list[VideoRecord], int]:
-    """采集未出现过的视频详情，并跳过列表页已知视频。"""
+    persist_page: PagePersistor,
+    stop_requested: StopRequested,
+) -> tuple[int, int, bool]:
+    """逐页采集并落盘未出现过的视频，避免跨页累积记录。"""
 
-    records: list[VideoRecord] = []
+    collected_count = 0
     skipped_count = 0
     page_number = 1
 
@@ -140,6 +148,7 @@ async def collect_all_video_details(
         await rows.first.wait_for(state="visible", timeout=30_000)
         row_count = await rows.count()
         print(f"\n开始采集第 {page_number} 页，共 {row_count} 条视频：")
+        page_records: list[VideoRecord] = []
 
         for index in range(row_count):
             try:
@@ -163,7 +172,7 @@ async def collect_all_video_details(
                     row_number=index + 1,
                     record=list_record,
                 )
-                records.append(record)
+                page_records.append(record)
                 known_identities.add(identity)
                 wait_seconds = (
                     0.0
@@ -179,6 +188,16 @@ async def collect_all_video_details(
                     await page.wait_for_timeout(wait_seconds * 1_000)
             except Exception as exc:
                 print(f"  [{index + 1}] 获取 video_id 失败：{exc}", file=sys.stderr)
+
+        if page_records:
+            await persist_page(page_records, page_number)
+            collected_count += len(page_records)
+            page_records.clear()
+            gc.collect()
+
+        if stop_requested():
+            print("安全停止请求已生效：当前页已写入，停止后续翻页")
+            return collected_count, skipped_count, True
 
         next_button = page.locator(
             ".arco-pagination-item-next, .arco-pagination-next"
@@ -211,5 +230,5 @@ async def collect_all_video_details(
         page_number += 1
         await page.wait_for_timeout(1_000)
 
-    print(f"\n共获取 {len(records)} 个新 video_id，跳过 {skipped_count} 条已有视频")
-    return records, skipped_count
+    print(f"\n共获取 {collected_count} 个新 video_id，跳过 {skipped_count} 条已有视频")
+    return collected_count, skipped_count, False

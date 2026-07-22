@@ -172,5 +172,8 @@ def write_result_excel(
         added_count += 1
 
     format_worksheet(worksheet)
-    workbook.save(excel_path)
+    try:
+        workbook.save(excel_path)
+    finally:
+        workbook.close()
     return added_count, skipped_count

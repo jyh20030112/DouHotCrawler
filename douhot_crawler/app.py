@@ -1,6 +1,8 @@
 """爬虫运行编排。"""
 
 import asyncio
+import select
+import sys
 from datetime import datetime
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CacheMode, CrawlerRunConfig
@@ -23,6 +25,25 @@ from .storage import (
 )
 
 
+async def watch_stop_command(stop_event: asyncio.Event) -> None:
+    """监听终端的 q 指令，在当前页完成后安全停止。"""
+
+    while not stop_event.is_set():
+        try:
+            readable, _, _ = select.select([sys.stdin], [], [], 0)
+        except (OSError, ValueError):
+            return
+
+        if readable:
+            command = sys.stdin.readline().strip().lower()
+            if command in {"q", "quit", "exit"}:
+                stop_event.set()
+                print("已收到安全停止请求，将在当前页写入 Excel 后退出")
+                return
+
+        await asyncio.sleep(0.2)
+
+
 async def run(options: RunOptions) -> None:
     """执行一次完整的关键词搜索、采集和结果入库。"""
 
@@ -36,9 +57,12 @@ async def run(options: RunOptions) -> None:
         )
 
     excel_path = RESULT_EXCEL_PATH.resolve()
-    captured_videos: list[VideoRecord] = []
     known_video_identities = existing_video_identities(excel_path, options.keyword)
     skipped_in_list = 0
+    added_count = 0
+    skipped_in_storage = 0
+    stop_event = asyncio.Event()
+    stop_task: asyncio.Task[None] | None = None
     if known_video_identities:
         print(f"已加载 {len(known_video_identities)} 条已有视频，将跳过详情页")
 
@@ -59,6 +83,28 @@ async def run(options: RunOptions) -> None:
     )
     crawler = AsyncWebCrawler(config=browser_config)
 
+    if sys.stdin.isatty():
+        print("输入 q 并按回车，可在当前页写入 Excel 后安全退出")
+        stop_task = asyncio.create_task(watch_stop_command(stop_event))
+
+    async def persist_page(records: list[VideoRecord], page_number: int) -> None:
+        """将一页已采集记录增量写入 Excel 后释放内存。"""
+
+        nonlocal added_count, skipped_in_storage
+        crawled_at = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
+        page_added, page_skipped = await asyncio.to_thread(
+            write_result_excel,
+            records,
+            excel_path,
+            options.keyword,
+            options.result_type,
+            options.time_range,
+            crawled_at,
+        )
+        added_count += page_added
+        skipped_in_storage += page_skipped
+        print(f"第 {page_number} 页已写入 Excel：新增 {page_added} 条")
+
     async def after_goto(
         page: Page,
         context,
@@ -75,13 +121,16 @@ async def run(options: RunOptions) -> None:
         await click_result_type(page, options.result_type)
         await click_time_range(page, options.time_range)
 
-        new_records, skipped_count = await collect_all_video_details(
+        _, skipped_count, stopped = await collect_all_video_details(
             page,
             known_video_identities,
             options.detail_delay,
+            persist_page,
+            stop_event.is_set,
         )
-        captured_videos.extend(new_records)
         skipped_in_list += skipped_count
+        if stopped:
+            print("已安全停止采集")
         return page
 
     crawler.crawler_strategy.set_hook("after_goto", after_goto)
@@ -92,19 +141,16 @@ async def run(options: RunOptions) -> None:
         if not result.success:
             raise RuntimeError(result.error_message or "爬取失败")
 
-        crawled_at = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
-        added_count, skipped_count = write_result_excel(
-            records=captured_videos,
-            excel_path=excel_path,
-            keyword=options.keyword,
-            result_type=options.result_type,
-            time_range=options.time_range,
-            crawled_at=crawled_at,
-        )
         print(f"\n总结果 Excel：{excel_path}（Sheet：{excel_sheet_name(options.keyword)}）")
         print(
             f"本次新增 {added_count} 条，"
-            f"跳过已有视频 {skipped_in_list + skipped_count} 条"
+            f"跳过已有视频 {skipped_in_list + skipped_in_storage} 条"
         )
     finally:
+        if stop_task:
+            stop_task.cancel()
+            try:
+                await stop_task
+            except asyncio.CancelledError:
+                pass
         await crawler.close()
