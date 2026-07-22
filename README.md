@@ -1,93 +1,112 @@
-# lowfans-crawler
+# Douhot 热榜爬虫（MVP）
 
+基于 Crawl4AI 和已登录的 Douhot 浏览器 Profile，按关键词检索抖音热榜视频，采集榜单指标、视频链接和高赞评论，并增量写入一个 Excel 结果库。
 
+当前版本是第一阶段 MVP：已跑通搜索、筛选、分页采集、详情页信息提取、评论采集和 Excel 增量入库。
 
-## Getting started
+## 功能
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+- 按关键词搜索 Douhot 视频榜。
+- 选择类型筛选和时间范围筛选。
+- 采集视频名称、博主、粉丝数、热度、播放/点赞增量、点赞率与前四条高赞评论。
+- 通过详情页 `video_id` 生成标准抖音视频链接。
+- 结果保存到 `result/result.xlsx`，每个关键词对应一个 Sheet。
+- 使用“视频名称 + 博主名称”增量去重；已存在的视频会在列表页被跳过，不再打开详情页。
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+## 环境要求
 
-## Add your files
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/)
+- 已安装 Chromium（Crawl4AI 会使用受管浏览器）
+- 可登录的 Douhot / 抖音账号
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+安装依赖：
 
+```bash
+uv sync
 ```
-cd existing_repo
-git remote add origin https://gitlab.deving.cn/JiangYiHeng/lowfans-crawler.git
-git branch -M main
-git push -uf origin main
+
+## 首次使用：创建登录 Profile
+
+爬虫复用本地浏览器 Profile：`~/.crawl4ai/profiles/douhot`。首次运行前执行：
+
+```bash
+uv run crwl profiles
 ```
 
-## Integrate with your tools
+在打开的浏览器中登录 Douhot，完成后按 `q` 保存并退出。之后正常运行无需重复登录；若登录状态失效，重新创建或更新该 Profile。
 
-- [ ] [Set up project integrations](https://gitlab.deving.cn/JiangYiHeng/lowfans-crawler/-/settings/integrations)
+## 运行
 
-## Collaborate with your team
+最小命令：
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+```bash
+uv run python -m douhot_crawler.main "大健康"
+```
 
-## Test and Deploy
+指定筛选条件：
 
-Use the built-in continuous integration in GitLab.
+```bash
+uv run python -m douhot_crawler.main "大健康" \
+  --result-type "低粉爆款" \
+  --time-range "近1天"
+```
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+可用参数：
 
-***
+| 参数 | 说明 |
+| --- | --- |
+| `keyword` | 必填，搜索关键词。 |
+| `--result-type` | 类型筛选；默认 `低粉爆款`。 |
+| `--time-range` | `近1小时`、`近1天`、`近3天` 或 `近7天`；默认 `近7天`。 |
+| `--input-timeout` | 等待搜索框渲染的秒数；默认 `30`。 |
+| `--headless` | 无头运行；首次排错时建议不使用。 |
 
-# Editing this README
+## 输出与增量规则
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+输出文件固定为：
 
-## Suggestions for a good README
+```text
+result/result.xlsx
+```
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+每个关键词有独立 Sheet。表头如下：
 
-## Name
-Choose a self-explaining name for your project.
+```text
+序号、类型、爬取到的时间、时间类型、视频名称、视频的url、博主名称、
+总粉丝数、热度值、新增播放量、新增点赞量、点赞率、高赞评论
+```
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+同一关键词再次运行时：
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+1. 先读取该 Sheet 中已有的“视频名称 + 博主名称”。
+2. 列表页命中已有组合时，跳过详情页，不再重复请求。
+3. 仅将新视频追加到 Sheet 末尾。
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+这个去重键适合高效增量采集；极少数情况下，同一博主发布同名不同视频可能被视为重复。
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+## 项目结构
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+```text
+.
+├── douhot_crawler/
+│   ├── main.py                # 命令行入口
+│   ├── app.py                 # 运行编排：浏览器、钩子、入库
+│   ├── cli.py                 # 命令行参数
+│   ├── config.py              # URL、默认值和输出字段
+│   ├── models.py              # RunOptions、视频记录与去重键
+│   ├── page_actions.py        # 搜索框、搜索提交、类型/时间筛选
+│   ├── collector.py           # 列表解析、详情页采集、分页
+│   ├── comments.py            # 评论分析页与高赞评论提取
+│   └── storage.py             # Excel 表头迁移、增量去重与写入
+├── result/
+│   └── result.xlsx            # 运行后生成的总结果库
+├── pyproject.toml
+└── uv.lock
+```
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+## 当前边界与下一步
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+- 目前没有额外的逐条详情页限速，后续建议增加带随机抖动的可配置限速。
+- 页面选择器依赖 Douhot 当前页面结构；若页面改版，优先检查 `page_actions.py` 和 `collector.py`。
+- 当前为单进程运行，适合先稳定采集和沉淀数据；并发、任务队列、断点续跑可放在下一阶段实现。
