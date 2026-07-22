@@ -41,13 +41,13 @@ uv run crwl profiles
 最小命令：
 
 ```bash
-uv run python -m douhot_crawler.main "大健康"
+uv run python main.py "大健康"
 ```
 
 指定筛选条件：
 
 ```bash
-uv run python -m douhot_crawler.main "大健康" \
+uv run python main.py "大健康" \
   --result-type "低粉爆款" \
   --time-range "近1天"
 ```
@@ -60,6 +60,7 @@ uv run python -m douhot_crawler.main "大健康" \
 | `--result-type` | 类型筛选；默认 `低粉爆款`。 |
 | `--time-range` | `近1小时`、`近1天`、`近3天` 或 `近7天`；默认 `近7天`。 |
 | `--input-timeout` | 等待搜索框渲染的秒数；默认 `30`。 |
+| `--detail-delay` | 每条新视频详情采集后的基础等待秒数；默认 `1`，会随机浮动 ±`0.2` 秒。 |
 | `--headless` | 无头运行；首次排错时建议不使用。 |
 
 ## 输出与增量规则
@@ -90,7 +91,6 @@ result/result.xlsx
 ```text
 .
 ├── douhot_crawler/
-│   ├── main.py                # 命令行入口
 │   ├── app.py                 # 运行编排：浏览器、钩子、入库
 │   ├── cli.py                 # 命令行参数
 │   ├── config.py              # URL、默认值和输出字段
@@ -101,12 +101,13 @@ result/result.xlsx
 │   └── storage.py             # Excel 表头迁移、增量去重与写入
 ├── result/
 │   └── result.xlsx            # 运行后生成的总结果库
+├── main.py                    # 命令行入口
 ├── pyproject.toml
 └── uv.lock
 ```
 
 ## 当前边界与下一步
 
-- 目前没有额外的逐条详情页限速，后续建议增加带随机抖动的可配置限速。
+- 新视频详情采集默认间隔为 `1 ± 0.2` 秒；如需更保守，可通过 `--detail-delay` 增大基础等待时间。
 - 页面选择器依赖 Douhot 当前页面结构；若页面改版，优先检查 `page_actions.py` 和 `collector.py`。
 - 当前为单进程运行，适合先稳定采集和沉淀数据；并发、任务队列、断点续跑可放在下一阶段实现。

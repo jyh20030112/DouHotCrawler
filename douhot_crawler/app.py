@@ -26,6 +26,9 @@ from .storage import (
 async def run(options: RunOptions) -> None:
     """执行一次完整的关键词搜索、采集和结果入库。"""
 
+    if options.detail_delay < 0:
+        raise ValueError("--detail-delay 不能小于 0")
+
     if not PROFILE_PATH.exists():
         raise FileNotFoundError(
             f"没有找到 douhot Profile：{PROFILE_PATH}\n"
@@ -75,6 +78,7 @@ async def run(options: RunOptions) -> None:
         new_records, skipped_count = await collect_all_video_details(
             page,
             known_video_identities,
+            options.detail_delay,
         )
         captured_videos.extend(new_records)
         skipped_in_list += skipped_count

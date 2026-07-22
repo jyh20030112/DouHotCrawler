@@ -3,8 +3,8 @@
 import asyncio
 import sys
 
-from .app import run
-from .cli import parse_args
+from douhot_crawler.app import run
+from douhot_crawler.cli import parse_args
 
 
 def main() -> None:

@@ -2,11 +2,13 @@
 
 import re
 import sys
+from random import uniform
 
 from playwright.async_api import Locator, Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from .comments import fetch_top_comments
+from .config import DETAIL_DELAY_JITTER
 from .models import VideoIdentity, VideoRecord, video_identity
 
 
@@ -125,6 +127,7 @@ async def capture_video_detail(
 async def collect_all_video_details(
     page: Page,
     known_identities: set[VideoIdentity],
+    detail_delay: float,
 ) -> tuple[list[VideoRecord], int]:
     """采集未出现过的视频详情，并跳过列表页已知视频。"""
 
@@ -162,6 +165,18 @@ async def collect_all_video_details(
                 )
                 records.append(record)
                 known_identities.add(identity)
+                wait_seconds = (
+                    0.0
+                    if detail_delay == 0
+                    else max(
+                        0.0,
+                        detail_delay
+                        + uniform(-DETAIL_DELAY_JITTER, DETAIL_DELAY_JITTER),
+                    )
+                )
+                if wait_seconds:
+                    print(f"  等待 {wait_seconds:.2f} 秒后采集下一条")
+                    await page.wait_for_timeout(wait_seconds * 1_000)
             except Exception as exc:
                 print(f"  [{index + 1}] 获取 video_id 失败：{exc}", file=sys.stderr)
 

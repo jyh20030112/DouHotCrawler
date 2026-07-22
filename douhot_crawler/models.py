@@ -14,6 +14,7 @@ class RunOptions:
 
     keyword: str
     input_timeout: float
+    detail_delay: float
     result_type: str
     time_range: str
     headless: bool

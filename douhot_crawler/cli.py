@@ -5,6 +5,7 @@ import argparse
 from .config import (
     DEFAULT_RESULT_TYPE,
     DEFAULT_TIME_RANGE,
+    DEFAULT_DETAIL_DELAY,
     TIME_RANGE_CHOICES,
 )
 from .models import RunOptions
@@ -27,6 +28,12 @@ def parse_args() -> RunOptions:
         help="等待搜索输入框出现的最长秒数（默认：30）",
     )
     parser.add_argument(
+        "--detail-delay",
+        type=float,
+        default=DEFAULT_DETAIL_DELAY,
+        help="每条新视频详情采集后的基础等待秒数（默认：1）",
+    )
+    parser.add_argument(
         "--result-type",
         default=DEFAULT_RESULT_TYPE,
         help=f"搜索后点击的类型筛选（默认：{DEFAULT_RESULT_TYPE}）",
@@ -47,6 +54,7 @@ def parse_args() -> RunOptions:
     return RunOptions(
         keyword=args.keyword,
         input_timeout=args.input_timeout,
+        detail_delay=args.detail_delay,
         result_type=args.result_type,
         time_range=args.time_range,
         headless=args.headless,

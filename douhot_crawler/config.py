@@ -12,6 +12,8 @@ TARGET_URL = (
 
 DEFAULT_RESULT_TYPE = "低粉爆款"
 DEFAULT_TIME_RANGE = "近7天"
+DEFAULT_DETAIL_DELAY = 1.0
+DETAIL_DELAY_JITTER = 0.2
 TIME_RANGE_CHOICES = ("近1小时", "近1天", "近3天", "近7天")
 
 DOUYIN_VIDEO_URL_PREFIX = "https://www.douyin.com/video/"
