@@ -41,13 +41,13 @@ uv run crwl profiles
 最小命令：
 
 ```bash
-uv run python main.py "大健康"
+uv run python crawler.py "大健康"
 ```
 
 指定筛选条件：
 
 ```bash
-uv run python main.py "大健康" \
+uv run python crawler.py "大健康" \
   --result-type "低粉爆款" \
   --time-range "近1天"
 ```
@@ -107,7 +107,7 @@ result/result.xlsx
 │   └── storage.py             # Excel 表头迁移、增量去重与写入
 ├── result/
 │   └── result.xlsx            # 运行后生成的总结果库
-├── main.py                    # 命令行入口
+├── crawler.py                 # 命令行入口
 ├── pyproject.toml
 └── uv.lock
 ```
@@ -116,5 +116,19 @@ result/result.xlsx
 
 - 新视频详情采集默认间隔为 `1 ± 0.2` 秒；如需更保守，可通过 `--detail-delay` 增大基础等待时间。
 - 视频记录按页写入后立即释放，详情页弹窗也会逐条关闭，避免长任务累积页面对象和记录列表。
+
+## 第二阶段：视频口播提取
+
+`douhot_analyze.py` 会读取 `result/result.xlsx` 的“视频的url”列，使用 `cookie.config` 调用视频提取接口，并将接口返回的 `transcript` 写入“视频口播”列。已有口播的行默认跳过，支持断点续跑。
+
+```bash
+uv run python douhot_analyze.py
+```
+
+先小批量验证一个 Sheet：
+
+```bash
+uv run python douhot_analyze.py --sheet "美容" --limit 1
+```
 - 页面选择器依赖 Douhot 当前页面结构；若页面改版，优先检查 `page_actions.py` 和 `collector.py`。
 - 当前为单进程运行，适合先稳定采集和沉淀数据；并发、任务队列、断点续跑可放在下一阶段实现。
