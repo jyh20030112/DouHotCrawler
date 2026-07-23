@@ -9,6 +9,7 @@ TARGET_URL = (
     "&date_window=168"
     "&sub_type=1001"
 )
+LOGIN_URL = "https://douhot.douyin.com/"
 
 DEFAULT_RESULT_TYPE = "低粉爆款"
 DEFAULT_TIME_RANGE = "近7天"
