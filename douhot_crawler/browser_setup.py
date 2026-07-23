@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -42,6 +43,14 @@ def install_chromium(report: Callable[[str], None]) -> None:
     node, cli = compute_driver_executable()
     report("开始下载 Chromium，下载时间取决于网络状况…")
 
+    # Windows：隐藏 Node 控制台窗口，并用 start_new_session 切断句柄继承
+    popen_kwargs: dict = {}
+    if sys.platform == "win32":
+        popen_kwargs.update(
+            creationflags=subprocess.CREATE_NO_WINDOW,  # type: ignore[attr-defined]
+            start_new_session=True,
+        )
+
     process = subprocess.Popen(
         [node, cli, "install", "chromium"],
         stdin=subprocess.DEVNULL,
@@ -51,6 +60,7 @@ def install_chromium(report: Callable[[str], None]) -> None:
         encoding="utf-8",
         errors="replace",
         env=get_driver_env(),
+        **popen_kwargs,
     )
     assert process.stdout is not None
 
