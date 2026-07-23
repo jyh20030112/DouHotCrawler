@@ -39,7 +39,7 @@ def chromium_status() -> tuple[bool, str]:
     return False, detail
 
 
-_CHROMIUM_INSTALL_TIMEOUT = 180  # 下载 + 解压最长等待时间（秒）
+_CHROMIUM_INSTALL_TIMEOUT = 600  # 下载 + 解压最长等待时间（秒）
 
 
 def install_chromium(report: Callable[[str], None]) -> None:
