@@ -4,6 +4,7 @@ import argparse
 import json
 import sys
 import time
+from collections.abc import Callable
 from copy import copy
 from pathlib import Path
 from typing import Any
@@ -155,7 +156,11 @@ def select_sheets(workbook, requested_sheets: list[str] | None):
     return [workbook[name] for name in requested_sheets]
 
 
-def analyze_excel(args: argparse.Namespace) -> tuple[int, int, int]:
+def analyze_excel(
+    args: argparse.Namespace,
+    *,
+    stop_requested: Callable[[], bool] | None = None,
+) -> tuple[int, int, int]:
     """提取并写入所有待处理视频口播，返回成功、跳过、失败数。"""
 
     if args.timeout <= 0:
@@ -189,6 +194,9 @@ def analyze_excel(args: argparse.Namespace) -> tuple[int, int, int]:
             print(f"\n开始处理 Sheet：{worksheet.title}")
 
             for row_number in range(2, worksheet.max_row + 1):
+                if stop_requested and stop_requested():
+                    print("已收到安全停止请求，已完成的口播已写入 Excel")
+                    return success_count, skipped_count, failed_count
                 if args.limit is not None and processed_count >= args.limit:
                     break
 

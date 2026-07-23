@@ -4,6 +4,7 @@ import asyncio
 import select
 import signal
 import sys
+from collections.abc import Callable
 from datetime import datetime
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CacheMode, CrawlerRunConfig
@@ -45,7 +46,11 @@ async def watch_stop_command(stop_event: asyncio.Event) -> None:
         await asyncio.sleep(0.2)
 
 
-async def run(options: RunOptions) -> None:
+async def run(
+    options: RunOptions,
+    *,
+    stop_requested: Callable[[], bool] | None = None,
+) -> None:
     """执行一次完整的关键词搜索、采集和结果入库。"""
 
     if options.detail_delay < 0:
@@ -72,6 +77,13 @@ async def run(options: RunOptions) -> None:
         if not stop_event.is_set():
             stop_event.set()
             print("已收到停止请求，将完成当前记录并写入本页已有数据后退出")
+
+    def should_stop() -> bool:
+        """合并命令行、信号和桌面 GUI 的协作式停止请求。"""
+
+        if stop_requested and stop_requested():
+            request_safe_stop()
+        return stop_event.is_set()
 
     # GUI 使用 SIGTERM 请求停止。将其转换为协作式停止事件，避免
     # process.terminate() 直接丢弃尚未写入的 page_records。
@@ -144,7 +156,7 @@ async def run(options: RunOptions) -> None:
             known_video_identities,
             options.detail_delay,
             persist_page,
-            stop_event.is_set,
+            should_stop,
         )
         skipped_in_list += skipped_count
         if stopped:

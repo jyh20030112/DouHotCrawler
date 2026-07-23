@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import argparse
+import asyncio
+import contextlib
+import io
 import os
-import shlex
 import shutil
 import sys
+import threading
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import (QObject, QProcess, QStandardPaths, Qt, QThread,
-                            QTimer, Signal, Slot)
+from PySide6.QtCore import (QObject, QStandardPaths, Qt, QThread, QTimer,
+                            Signal, Slot)
 from PySide6.QtGui import QFont, QFontMetrics
 from PySide6.QtWidgets import (QApplication, QFileDialog, QFormLayout, QFrame,
                                QHBoxLayout, QLabel, QMainWindow, QMessageBox,
@@ -24,6 +28,12 @@ from qfluentwidgets import (InfoBar, InfoBarPosition, LineEdit, PlainTextEdit,
                             setTheme)
 
 from douhot_crawler.cookie_status import CookieStatus, inspect_douhot_cookie
+from douhot_crawler.analyzer import (DEFAULT_COOKIE_PATH, DEFAULT_EXCEL_PATH,
+                                     analyze_excel)
+from douhot_crawler.app import run as run_crawler
+from douhot_crawler.config import RESULT_EXCEL_PATH
+from douhot_crawler.login import run_login
+from douhot_crawler.models import RunOptions
 from douhot_crawler.transcript_cookie_status import (inspect_transcript_cookie,
                                                      save_transcript_cookie)
 
@@ -34,7 +44,6 @@ from douhot_crawler.transcript_cookie_status import (inspect_transcript_cookie,
 os.environ.pop("QT_IM_MODULE", None)
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RESULT_TYPES = ("低粉爆款", "视频总榜", "高完播率", "高涨粉率", "高点赞率")
 TIME_RANGES = ("近1小时", "近1天", "近3天", "近7天")
 
@@ -60,6 +69,67 @@ class CookieCheckWorker(QObject):
     def check(self) -> None:
         self.completed.emit(inspect_douhot_cookie())
         self.finished.emit()
+
+
+class _GuiLogStream(io.TextIOBase):
+    """把工作线程中的标准输出安全地转发到 Qt 日志控件。"""
+
+    def __init__(self, signal: Signal) -> None:
+        self._signal = signal
+
+    def write(self, text: str) -> int:
+        if text:
+            self._signal.emit(text)
+        return len(text)
+
+    def flush(self) -> None:
+        return None
+
+
+class TaskWorker(QObject):
+    """在同一冻结程序中运行任务，避免依赖外部 Python 解释器。"""
+
+    output = Signal(str)
+    completed = Signal(bool, str)
+    finished = Signal()
+
+    def __init__(self, task_kind: str, payload: object) -> None:
+        super().__init__()
+        self.task_kind = task_kind
+        self.payload = payload
+        self._stop_event = threading.Event()
+
+    def request_stop(self) -> None:
+        self._stop_event.set()
+
+    @Slot()
+    def run(self) -> None:
+        stream = _GuiLogStream(self.output)
+        try:
+            with contextlib.redirect_stdout(stream), contextlib.redirect_stderr(stream):
+                if self.task_kind == "crawl":
+                    asyncio.run(
+                        run_crawler(
+                            self.payload,  # type: ignore[arg-type]
+                            stop_requested=self._stop_event.is_set,
+                        )
+                    )
+                elif self.task_kind == "analyze":
+                    analyze_excel(
+                        self.payload,  # type: ignore[arg-type]
+                        stop_requested=self._stop_event.is_set,
+                    )
+                elif self.task_kind == "login":
+                    asyncio.run(run_login(stop_requested=self._stop_event.is_set))
+                else:
+                    raise ValueError(f"未知任务类型：{self.task_kind}")
+        except Exception as exc:
+            self.output.emit(f"\n任务失败：{exc}\n")
+            self.completed.emit(False, str(exc))
+        else:
+            self.completed.emit(True, "")
+        finally:
+            self.finished.emit()
 
 
 class AdaptivePushButton(PushButton):
@@ -144,11 +214,12 @@ class AdaptivePrimaryPushButton(PrimaryPushButton):
 
 
 class DouhotGui(QMainWindow):
-    """启动既有 CLI 并呈现实时输出的原生 Qt 界面。"""
+    """运行爬取任务并呈现实时输出的原生 Qt 界面。"""
 
     def __init__(self) -> None:
         super().__init__()
-        self.process: QProcess | None = None
+        self._task_thread: QThread | None = None
+        self._task_worker: TaskWorker | None = None
         self._task_kind: str | None = None
         self._cookie_thread: QThread | None = None
         self._cookie_worker: CookieCheckWorker | None = None
@@ -398,23 +469,15 @@ class DouhotGui(QMainWindow):
                 f"\n{cookie_status.label}。请点击“爬虫Cookie检测”的状态按钮开始扫码登录。"
             )
             return
-        arguments = [
-            "-u",
-            "-m",
-            "douhot_crawler",
-            keyword,
-            "--result-type",
-            self.result_type.currentText(),
-            "--time-range",
-            self.time_range.currentText(),
-            "--input-timeout",
-            str(self.input_timeout.value()),
-            "--detail-delay",
-            str(self.detail_delay.value()),
-        ]
-        if self.headless.isChecked():
-            arguments.append("--headless")
-        self._start_process("热榜爬取", arguments, "crawl")
+        options = RunOptions(
+            keyword=keyword,
+            result_type=self.result_type.currentText(),
+            time_range=self.time_range.currentText(),
+            input_timeout=float(self.input_timeout.value()),
+            detail_delay=float(self.detail_delay.value()),
+            headless=self.headless.isChecked(),
+        )
+        self._start_task("热榜爬取", "crawl", options)
 
     def start_analyze(self) -> None:
         cookie_status = inspect_transcript_cookie()
@@ -425,18 +488,10 @@ class DouhotGui(QMainWindow):
             )
             self.tabs.setCurrentIndex(1)
             return
-        arguments = [
-            "-u",
-            "-m",
-            "douhot_crawler.analyzer",
-            "--timeout",
-            str(self.analyze_timeout.value()),
-            "--delay",
-            str(self.analyze_delay.value()),
-        ]
+        sheets = []
         for sheet in self.sheets.text().split(","):
             if sheet.strip():
-                arguments.extend(("--sheet", sheet.strip()))
+                sheets.append(sheet.strip())
         limit = self.limit.text().strip()
         if limit:
             if not limit.isdigit() or int(limit) < 1:
@@ -445,92 +500,91 @@ class DouhotGui(QMainWindow):
                 )
                 self.limit.setFocus()
                 return
-            arguments.extend(("--limit", limit))
-        if self.overwrite.isChecked():
-            arguments.append("--overwrite")
-        self._start_process("口播提取", arguments, "analyze")
+        options = argparse.Namespace(
+            excel=DEFAULT_EXCEL_PATH,
+            cookie_file=DEFAULT_COOKIE_PATH,
+            sheet=sheets or None,
+            callback_url="",
+            timeout=float(self.analyze_timeout.value()),
+            delay=float(self.analyze_delay.value()),
+            limit=int(limit) if limit else None,
+            overwrite=self.overwrite.isChecked(),
+        )
+        self._start_task("口播提取", "analyze", options)
 
     def _start_login(self) -> None:
         """启动同一 Profile 的扫码登录浏览器。"""
 
-        self._start_process(
-            "等待扫码登录", ["-u", "-m", "douhot_crawler.login_cli"], "login"
-        )
+        self._start_task("等待扫码登录", "login", None)
 
-    def _start_process(
-        self, task_name: str, arguments: list[str], task_kind: str
+    def _start_task(
+        self, task_name: str, task_kind: str, payload: object
     ) -> None:
-        if self.process and self.process.state() != QProcess.ProcessState.NotRunning:
+        if self._task_thread and self._task_thread.isRunning():
             QMessageBox.information(
                 self, "任务正在运行", "请先等待当前任务结束，或请求安全停止。"
             )
             return
-        process = QProcess(self)
-        process.setWorkingDirectory(str(PROJECT_ROOT))
-        process.setProcessChannelMode(QProcess.ProcessChannelMode.SeparateChannels)
-        process.readyReadStandardOutput.connect(self._read_stdout)
-        process.readyReadStandardError.connect(self._read_stderr)
-        process.finished.connect(self._process_finished)
-        process.errorOccurred.connect(self._process_error)
-        self.process = process
+        thread = QThread(self)
+        worker = TaskWorker(task_kind, payload)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.output.connect(self._append_output)
+        worker.completed.connect(self._task_finished)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._clear_task_worker)
+        self._task_thread = thread
+        self._task_worker = worker
         self._task_kind = task_kind
-        self.log.appendPlainText("\n$ " + shlex.join([sys.executable, *arguments]))
+        self.log.appendPlainText(f"\n开始{task_name}…")
         self._set_status(f"运行中 · {task_name}", "#38bdf8")
         self.stop_button.setEnabled(True)
         self.login_finish_button.setEnabled(task_kind == "login")
         self.crawl_button.setEnabled(False)
         self.analyze_button.setEnabled(False)
-        process.start(sys.executable, arguments)
+        thread.start()
 
-    def _read_stdout(self) -> None:
-        if self.process:
-            self._append_output(bytes(self.process.readAllStandardOutput()))
-
-    def _read_stderr(self) -> None:
-        if self.process:
-            self._append_output(bytes(self.process.readAllStandardError()))
-
-    def _append_output(self, data: bytes) -> None:
-        text = data.decode("utf-8", errors="replace").rstrip("\n")
+    @Slot(str)
+    def _append_output(self, data: str) -> None:
+        text = data.rstrip("\n")
         if text:
             self.log.appendPlainText(text)
 
-    def _process_finished(self, exit_code: int, status: QProcess.ExitStatus) -> None:
-        succeeded = exit_code == 0 and status == QProcess.ExitStatus.NormalExit
+    @Slot(bool, str)
+    def _task_finished(self, succeeded: bool, detail: str) -> None:
         self._set_status(
-            "任务完成" if succeeded else f"任务结束（{exit_code}）",
+            "任务完成" if succeeded else f"任务结束：{detail}",
             "#34d399" if succeeded else "#fb7185",
         )
         self._reset_process_controls()
         QTimer.singleShot(250, self._refresh_crawler_cookie_status)
         QTimer.singleShot(250, self._refresh_transcript_cookie_status)
 
-    def _process_error(self, error: QProcess.ProcessError) -> None:
-        if error == QProcess.ProcessError.FailedToStart:
-            self.log.appendPlainText("\n无法启动 Python 子进程。")
-            self._set_status("无法启动任务", "#fb7185")
-            self._reset_process_controls()
-
     def _reset_process_controls(self) -> None:
         self.stop_button.setEnabled(False)
         self.login_finish_button.setEnabled(False)
         self.crawl_button.setEnabled(True)
         self.analyze_button.setEnabled(True)
-        self.process = None
         self._task_kind = None
+
+    def _clear_task_worker(self) -> None:
+        self._task_thread = None
+        self._task_worker = None
 
     def finish_login(self) -> None:
         """通知登录子进程关闭 Crawl4AI 浏览器并持久化 Profile。"""
 
-        if not self.process or self._task_kind != "login":
+        if not self._task_worker or self._task_kind != "login":
             return
-        self.process.write(b"q\n")
+        self._task_worker.request_stop()
         self.login_finish_button.setEnabled(False)
         self._set_status("正在保存登录状态…", "#fbbf24")
         self.log.appendPlainText("\n已确认扫码完成，正在保存 Cookie。")
 
     def stop_task(self) -> None:
-        if not self.process or self.process.state() == QProcess.ProcessState.NotRunning:
+        if not self._task_worker:
             return
         if self._task_kind == "login":
             message = "将关闭登录浏览器并保存当前已有的登录状态。"
@@ -548,7 +602,7 @@ class DouhotGui(QMainWindow):
         )
         if accepted != QMessageBox.StandardButton.Yes:
             return
-        self.process.terminate()
+        self._task_worker.request_stop()
         if self._task_kind == "login":
             self._set_status("正在保存登录状态…", "#fbbf24")
             self.log.appendPlainText("\n正在结束登录并保存 Cookie。")
@@ -667,13 +721,13 @@ class DouhotGui(QMainWindow):
     def download_excel(self) -> None:
         """将当前结果库导出到用户选择的位置。"""
 
-        if self.process and self.process.state() != QProcess.ProcessState.NotRunning:
+        if self._task_thread and self._task_thread.isRunning():
             QMessageBox.information(
                 self, "任务正在运行", "请在任务结束或安全停止后再下载 Excel。"
             )
             return
 
-        source = PROJECT_ROOT / "result" / "result.xlsx"
+        source = RESULT_EXCEL_PATH.resolve()
         if not source.is_file():
             QMessageBox.information(
                 self, "暂无结果文件", "尚未找到 result/result.xlsx，请先完成一次爬取。"
@@ -722,7 +776,7 @@ class DouhotGui(QMainWindow):
         self._cookie_worker = None
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
-        if self.process and self.process.state() != QProcess.ProcessState.NotRunning:
+        if self._task_thread and self._task_thread.isRunning():
             QMessageBox.information(
                 self, "任务仍在运行", "请先使用“终止当前任务”安全停止后再关闭界面。"
             )

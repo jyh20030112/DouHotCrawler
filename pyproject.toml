@@ -23,3 +23,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["douhot_crawler"]
+
+[dependency-groups]
+build = [
+    "pyinstaller>=6.21.0",
+]
