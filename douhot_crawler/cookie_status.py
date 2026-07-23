@@ -40,6 +40,34 @@ def _chromium_expiry(value: int) -> datetime | None:
     return (_CHROMIUM_EPOCH + timedelta(microseconds=value)).astimezone()
 
 
+def _profile_diagnostics(profile_path: Path) -> str:
+    """返回 Profile 目录的诊断信息，用于无法找到 Cookie 时的排查。"""
+
+    lines = [f"Profile 路径：{profile_path}"]
+    if not profile_path.is_dir():
+        lines.append("该目录不存在。")
+        return "\n".join(lines)
+
+    try:
+        top = sorted(p.name for p in profile_path.iterdir())
+    except OSError:
+        top = ["<无法读取>"]
+    lines.append(f"  目录内容：{', '.join(top[:15])}")
+
+    default = profile_path / "Default"
+    if default.is_dir():
+        try:
+            def_entries = sorted(p.name for p in default.iterdir())
+        except OSError:
+            def_entries = ["<无法读取>"]
+        lines.append(f"  Default 内容：{', '.join(def_entries[:15])}")
+
+    cookies_paths = [profile_path / "Default" / "Cookies", profile_path / "Cookies"]
+    for p in cookies_paths:
+        lines.append(f"  {p.name}: {'存在' if p.is_file() else '不存在'}")
+    return "\n".join(lines)
+
+
 def _cookie_database(profile_path: Path) -> Path | None:
     """兼容 Chromium Profile 根目录与 Default 子目录两种布局。"""
 
@@ -63,10 +91,11 @@ def inspect_douhot_cookie(
 
     cookie_db = _cookie_database(profile_path)
     if cookie_db is None:
+        diag = _profile_diagnostics(profile_path)
         return CookieStatus(
             "missing",
             "Cookie 未找到",
-            "未找到 Douhot 浏览器 Profile，请先创建并登录。",
+            f"未找到 Douhot 浏览器 Profile 的 Cookies 文件。\n{diag}",
         )
 
     try:
@@ -85,14 +114,31 @@ def inspect_douhot_cookie(
         return CookieStatus(
             "unknown",
             "Cookie 无法检测",
-            f"无法读取浏览器 Cookie 数据库：{exc}。",
+            f"无法读取浏览器 Cookie 数据库：{exc}。\n数据库路径：{cookie_db}",
         )
 
     if not rows:
+        # 列出数据库中所有 douyin 相关 cookie 名称，帮助排查名称不匹配
+        try:
+            connection = sqlite3.connect(f"file:{cookie_db}?mode=ro", uri=True)
+            try:
+                all_douyin = connection.execute(
+                    "SELECT DISTINCT name FROM cookies "
+                    "WHERE host_key LIKE '%douyin.com%'"
+                ).fetchall()
+            finally:
+                connection.close()
+            existing_names = [r[0] for r in all_douyin]
+        except sqlite3.Error:
+            existing_names = ["<读取失败>"]
+
         return CookieStatus(
             "missing",
             "Cookie 未登录",
-            "Profile 中没有找到 Douhot 的登录 Cookie，请重新登录。",
+            f"Cookie 数据库中没有找到预期的 Douhot 登录 Cookie。\n"
+            f"数据库路径：{cookie_db}\n"
+            f"期望的 Cookie：{', '.join(_LOGIN_COOKIE_NAMES)}\n"
+            f"实际 douyin 相关 Cookie：{', '.join(existing_names[:20])}",
         )
 
     reference_time = now or datetime.now().astimezone()
