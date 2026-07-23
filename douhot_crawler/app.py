@@ -2,6 +2,7 @@
 
 import asyncio
 import select
+import signal
 import sys
 from datetime import datetime
 
@@ -26,7 +27,7 @@ from .storage import (
 
 
 async def watch_stop_command(stop_event: asyncio.Event) -> None:
-    """监听终端的 q 指令，在当前页完成后安全停止。"""
+    """监听终端的 q 指令，在当前记录完成后安全停止。"""
 
     while not stop_event.is_set():
         try:
@@ -38,7 +39,7 @@ async def watch_stop_command(stop_event: asyncio.Event) -> None:
             command = sys.stdin.readline().strip().lower()
             if command in {"q", "quit", "exit"}:
                 stop_event.set()
-                print("已收到安全停止请求，将在当前页写入 Excel 后退出")
+                print("已收到安全停止请求，将完成当前记录并写入已有数据后退出")
                 return
 
         await asyncio.sleep(0.2)
@@ -63,6 +64,23 @@ async def run(options: RunOptions) -> None:
     skipped_in_storage = 0
     stop_event = asyncio.Event()
     stop_task: asyncio.Task[None] | None = None
+    signal_handler_installed = False
+
+    def request_safe_stop() -> None:
+        """请求在当前记录完成后落盘并退出，而不是中断写入。"""
+
+        if not stop_event.is_set():
+            stop_event.set()
+            print("已收到停止请求，将完成当前记录并写入本页已有数据后退出")
+
+    # GUI 使用 SIGTERM 请求停止。将其转换为协作式停止事件，避免
+    # process.terminate() 直接丢弃尚未写入的 page_records。
+    try:
+        asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, request_safe_stop)
+        signal_handler_installed = True
+    except (NotImplementedError, RuntimeError):
+        # 非 POSIX 平台不支持 asyncio 信号处理时，仍可使用命令行 q。
+        pass
     if known_video_identities:
         print(f"已加载 {len(known_video_identities)} 条已有视频，将跳过详情页")
 
@@ -84,7 +102,7 @@ async def run(options: RunOptions) -> None:
     crawler = AsyncWebCrawler(config=browser_config)
 
     if sys.stdin.isatty():
-        print("输入 q 并按回车，可在当前页写入 Excel 后安全退出")
+        print("输入 q 并按回车，可在当前记录完成后写入 Excel 并安全退出")
         stop_task = asyncio.create_task(watch_stop_command(stop_event))
 
     async def persist_page(records: list[VideoRecord], page_number: int) -> None:
@@ -153,4 +171,6 @@ async def run(options: RunOptions) -> None:
                 await stop_task
             except asyncio.CancelledError:
                 pass
+        if signal_handler_installed:
+            asyncio.get_running_loop().remove_signal_handler(signal.SIGTERM)
         await crawler.close()
