@@ -63,6 +63,7 @@ def detect_system_browser() -> tuple[str | None, str | None]:
     """
     if sys.platform == "win32":
         candidates: list[tuple[str, str]] = [
+            # Google Chrome（标准安装）
             (
                 "chrome",
                 os.path.expandvars(
@@ -81,6 +82,7 @@ def detect_system_browser() -> tuple[str | None, str | None]:
                     r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"
                 ),
             ),
+            # Microsoft Edge
             (
                 "msedge",
                 os.path.expandvars(
@@ -93,6 +95,11 @@ def detect_system_browser() -> tuple[str | None, str | None]:
                     r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
                 ),
             ),
+            # Chromium / Brave / Opera（常见第三方 Chromium 内核浏览器）
+            (
+                "chromium",
+                os.path.expandvars(r"%LOCALAPPDATA%\Chromium\Application\chrome.exe"),
+            ),
         ]
     elif sys.platform == "darwin":
         candidates = [
@@ -103,6 +110,10 @@ def detect_system_browser() -> tuple[str | None, str | None]:
             (
                 "msedge",
                 "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+            ),
+            (
+                "chromium",
+                "/Applications/Chromium.app/Contents/MacOS/Chromium",
             ),
         ]
     else:
@@ -131,6 +142,37 @@ def _browser_label(executable_path: str) -> str:
     return "Chrome "
 
 
+def _print_system_browser_diagnostics() -> None:
+    """向 stderr 输出未找到系统浏览器的诊断信息。"""
+    if sys.platform == "win32":
+        checked = [
+            os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"),
+            os.path.expandvars(r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"),
+        ]
+    elif sys.platform == "darwin":
+        checked = [
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+        ]
+    else:
+        checked = [
+            "/usr/bin/google-chrome-stable",
+            "/usr/bin/google-chrome",
+            "/usr/bin/chromium-browser",
+            "/usr/bin/chromium",
+            "/usr/bin/microsoft-edge-stable",
+            "/usr/bin/microsoft-edge",
+        ]
+    import sys as _sys
+    print("[DouHotCrawler] 未检测到系统浏览器，已检查路径：", file=_sys.stderr)
+    for p in checked:
+        exists = "✓" if Path(p).is_file() else "✗"
+        print(f"  {exists} {p}", file=_sys.stderr)
+
+
 # ── 公开 API ──────────────────────────────────────────────────────────
 
 
@@ -152,6 +194,7 @@ def chromium_status() -> tuple[bool, str]:
         return True, f"{_browser_label(path)}已就绪：{path}"
 
     # 没有系统浏览器 → 检查 Playwright 自带的 Chromium
+    _print_system_browser_diagnostics()
     try:
         from playwright.sync_api import sync_playwright
 
