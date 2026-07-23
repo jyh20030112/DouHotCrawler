@@ -10,6 +10,10 @@ from collections.abc import Callable
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CacheMode, CrawlerRunConfig
 
+from douhot_crawler.browser_patch import apply as _apply_browser_patch
+
+_apply_browser_patch()
+
 from .config import LOGIN_URL, PROFILE_PATH
 
 
