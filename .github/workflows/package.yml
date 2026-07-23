@@ -45,7 +45,16 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
-      - run: uv sync --frozen --group build
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          if [[ "${{ matrix.target }}" == "windows-arm64" ]]; then
+            # Shapely 2.1.2 ships no Windows ARM64 wheel. Crawl4AI declares it
+            # for optional geometry features that this application does not use.
+            uv sync --frozen --group build --no-install-package shapely
+          else
+            uv sync --frozen --group build
+          fi
       - name: Build native bundle
         shell: bash
         run: bash scripts/build_package.sh
