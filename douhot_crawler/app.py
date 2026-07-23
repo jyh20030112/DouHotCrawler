@@ -37,7 +37,7 @@ async def watch_stop_command(stop_event: asyncio.Event) -> None:
     while not stop_event.is_set():
         try:
             readable, _, _ = select.select([sys.stdin], [], [], 0)
-        except (OSError, ValueError):
+        except (OSError, ValueError, TypeError):
             return
 
         if readable:
@@ -117,7 +117,7 @@ async def run(
     )
     crawler = AsyncWebCrawler(config=browser_config)
 
-    if sys.stdin.isatty():
+    if sys.stdin is not None and sys.stdin.isatty():
         print("输入 q 并按回车，可在当前记录完成后写入 Excel 并安全退出")
         stop_task = asyncio.create_task(watch_stop_command(stop_event))
 
