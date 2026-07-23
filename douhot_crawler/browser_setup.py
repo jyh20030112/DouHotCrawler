@@ -18,6 +18,7 @@ def chromium_status() -> tuple[bool, str]:
         playwright = sync_playwright().start()
         try:
             executable = Path(playwright.chromium.executable_path)
+            cache_dir = Path(playwright.chromium.executable_path).parent.parent
         finally:
             playwright.stop()
     except Exception as exc:
@@ -25,7 +26,17 @@ def chromium_status() -> tuple[bool, str]:
 
     if executable.is_file():
         return True, f"Chromium 已就绪：{executable}"
-    return False, "尚未下载 Chromium；首次使用时下载一次即可。"
+
+    # 列出缓存目录内容帮助诊断
+    detail = f"尚未下载 Chromium（期望位置：{executable}）"
+    if cache_dir.is_dir():
+        try:
+            entries = sorted(p.name for p in cache_dir.iterdir())  # type: ignore[union-attr]
+        except OSError:
+            entries = []
+        if entries:
+            detail += f"；缓存目录已有：{', '.join(entries[:8])}"
+    return False, detail
 
 
 _CHROMIUM_INSTALL_TIMEOUT = 180  # 下载 + 解压最长等待时间（秒）
