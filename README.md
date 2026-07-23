@@ -36,18 +36,25 @@ uv run crwl profiles
 
 在打开的浏览器中登录 Douhot，完成后按 `q` 保存并退出。之后正常运行无需重复登录；若登录状态失效，重新创建或更新该 Profile。
 
+图形界面会自动检查本地 Profile 中的 Douhot 登录 Cookie，并显示有效、即将过期、已过期或缺失状态。该状态依据本地 Cookie 的到期时间，无法识别服务端主动吊销但尚未到期的 Cookie。
+
+图形界面将两类凭据分别显示在对应页签：
+
+- “爬虫Cookie检测”检查 Crawl4AI 的 Douhot Profile；失效后点击状态按钮打开扫码登录。
+- “口播Cookie检测”检查 `cookie.config` 中 `www.douyin.com` 的 Cookie；过期后在输入框粘贴新 Cookie 并保存。该检查从 `sid_guard` 的本地有效期判断，无法解析有效期时会标记为“已配置”，由实际口播提取最终验证。
+
 ## 运行
 
 最小命令：
 
 ```bash
-uv run python crawler.py "大健康"
+uv run douhot-crawl "大健康"
 ```
 
 指定筛选条件：
 
 ```bash
-uv run python crawler.py "大健康" \
+uv run douhot-crawl "大健康" \
   --result-type "低粉爆款" \
   --time-range "近1天"
 ```
@@ -97,17 +104,28 @@ result/result.xlsx
 ```text
 .
 ├── douhot_crawler/
+│   ├── __main__.py            # douhot-crawl 命令入口
+│   ├── analyzer.py            # douhot-analyze 命令入口与口播写入
+│   ├── gui.py                 # douhot-gui 图形界面
+│   ├── login_cli.py           # douhot-login 命令入口
 │   ├── app.py                 # 运行编排：浏览器、钩子、入库
 │   ├── cli.py                 # 命令行参数
 │   ├── config.py              # URL、默认值和输出字段
+│   ├── cookie_status.py        # Crawl4AI Profile Cookie 检测
+│   ├── transcript_cookie_status.py  # 口播 Cookie 检测与安全保存
+│   ├── login.py                # Douhot 扫码登录流程
 │   ├── models.py              # RunOptions、视频记录与去重键
 │   ├── page_actions.py        # 搜索框、搜索提交、类型/时间筛选
 │   ├── collector.py           # 列表解析、详情页采集、分页
 │   ├── comments.py            # 评论分析页与高赞评论提取
 │   └── storage.py             # Excel 表头迁移、增量去重与写入
+├── scripts/
+│   └── gui.sh                 # GUI shell 启动器
+├── tests/
+│   └── test_cookie_status.py  # Cookie 检测与保存测试
 ├── result/
 │   └── result.xlsx            # 运行后生成的总结果库
-├── crawler.py                 # 命令行入口
+├── cookie.config              # 口播提取的抖音 Cookie（运行时文件）
 ├── pyproject.toml
 └── uv.lock
 ```
@@ -119,27 +137,29 @@ result/result.xlsx
 
 ## 第二阶段：视频口播提取
 
-`douhot_analyze.py` 会读取 `result/result.xlsx` 的“视频的url”列，使用 `cookie.config` 调用视频提取接口，并将接口返回的 `transcript` 写入“视频口播”列。已有口播的行默认跳过，支持断点续跑。
+`douhot-analyze` 会读取 `result/result.xlsx` 的“视频的url”列，使用 `cookie.config` 调用视频提取接口，并将接口返回的 `transcript` 写入“视频口播”列。已有口播的行默认跳过，支持断点续跑。
 
 ```bash
-uv run python douhot_analyze.py
+uv run douhot-analyze
 ```
 
 先小批量验证一个 Sheet：
 
 ```bash
-uv run python douhot_analyze.py --sheet "美容" --limit 1
+uv run douhot-analyze --sheet "美容" --limit 1
 ```
 
 ## 图形界面
 
-使用无额外依赖的本地图形界面，可从一个窗口启动热榜爬取或口播提取，并查看实时日志：
+图形界面基于 PySide6 与 QFluentWidgets，可从一个窗口启动热榜爬取或口播提取，并查看实时日志：
 
 ```bash
-uv run python douhot_gui.py
+uv run douhot-gui
 ```
 
-若当前 Tk 环境不能渲染中文，程序会自动在默认浏览器打开仅监听 `127.0.0.1` 的本地界面；无需另行安装依赖或更换命令。
+顶部“下载 Excel”可将 `result/result.xlsx` 导出到自选位置；为保证文件完整，请在任务结束后使用。
+
+在 KDE/Wayland 下，界面使用 Qt 原生 Wayland text-input 协议，由 KWin 转交给 Fcitx；启动时会忽略全局 `QT_IM_MODULE`，避免 PySide6 与系统 Fcitx Qt 插件的 ABI 不兼容。不再依赖 Tk/XIM。
 
 界面中的“终止当前任务”会请求安全停止：爬虫完成正在处理的记录后，会将本页已采集数据写入 Excel 再退出；口播提取已按条写入。尚未取得详情的当前视频会在下次运行时重新处理。
 - 页面选择器依赖 Douhot 当前页面结构；若页面改版，优先检查 `page_actions.py` 和 `collector.py`。
