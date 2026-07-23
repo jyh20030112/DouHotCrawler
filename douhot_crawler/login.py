@@ -17,23 +17,35 @@ _apply_browser_patch()
 from .config import LOGIN_URL, PROFILE_PATH
 
 
+def _stdin_has_data() -> bool:
+    """检查 stdin 是否有待读取数据；在无控制台环境（GUI / PyInstaller）
+    中安全返回 False。
+    """
+    if sys.stdin is None or not hasattr(sys.stdin, "fileno"):
+        return False
+    try:
+        readable, _, _ = select.select([sys.stdin], [], [], 0)
+    except (OSError, ValueError, TypeError):
+        return False
+    return bool(readable)
+
+
 async def _wait_for_completion(
     stop_event: asyncio.Event,
     stop_requested: Callable[[], bool] | None = None,
 ) -> None:
     """等待终端或 GUI 写入 q；不读取或打印任何登录凭据。"""
 
-    print("请在浏览器中扫码登录。完成后输入 q 并回车，或点击“已完成扫码，保存登录”。")
+    print(
+        "请在浏览器中扫码登录。完成后输入 q 并回车，"
+        "或点击“已完成扫码，保存登录”。"
+    )
     while not stop_event.is_set():
         if stop_requested and stop_requested():
             print("已收到停止请求，正在保存登录状态…")
             stop_event.set()
             continue
-        try:
-            readable, _, _ = select.select([sys.stdin], [], [], 0)
-        except (OSError, ValueError):
-            readable = []
-        if readable:
+        if _stdin_has_data():
             command = sys.stdin.readline()
             if command.strip().lower() in {"q", "quit", "exit"}:
                 stop_event.set()
