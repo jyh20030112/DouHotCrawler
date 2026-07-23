@@ -30,17 +30,7 @@ jobs:
         include:
           - target: windows-x86_64
             runner: windows-2022
-          # GitHub currently labels this hosted image as public preview.
-          - target: windows-arm64
-            runner: windows-11-arm
-          - target: macos-x86_64
-            runner: macos-15-intel
-          - target: macos-arm64
-            runner: macos-15
-          - target: linux-x86_64
-            runner: ubuntu-24.04
-          - target: linux-arm64
-            runner: ubuntu-24.04-arm
+          # GitHub currently labels this hosted image as public preview. 
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6
