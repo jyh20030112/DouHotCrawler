@@ -62,16 +62,28 @@ def _profile_diagnostics(profile_path: Path) -> str:
             def_entries = ["<无法读取>"]
         lines.append(f"  Default 内容：{', '.join(def_entries[:15])}")
 
-    cookies_paths = [profile_path / "Default" / "Cookies", profile_path / "Cookies"]
+    cookies_paths = [
+        profile_path / "Default" / "Network" / "Cookies",
+        profile_path / "Default" / "Cookies",
+        profile_path / "Cookies",
+    ]
     for p in cookies_paths:
-        lines.append(f"  {p.name}: {'存在' if p.is_file() else '不存在'}")
+        label = str(p.relative_to(profile_path))
+        lines.append(f"  {label}: {'存在' if p.is_file() else '不存在'}")
     return "\n".join(lines)
 
 
 def _cookie_database(profile_path: Path) -> Path | None:
-    """兼容 Chromium Profile 根目录与 Default 子目录两种布局。"""
+    """兼容各版本 Chromium 的 Cookie 数据库路径布局。
 
-    for relative_path in (Path("Default") / "Cookies", Path("Cookies")):
+    Chrome/Edge 100+ 将 Cookies 移至 Default/Network/ 子目录。
+    """
+
+    for relative_path in (
+        Path("Default") / "Network" / "Cookies",  # Chrome/Edge ≥100
+        Path("Default") / "Cookies",               # 旧版本
+        Path("Cookies"),                            # 非 Default Profile
+    ):
         candidate = profile_path / relative_path
         if candidate.is_file():
             return candidate
