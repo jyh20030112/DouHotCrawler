@@ -27,7 +27,7 @@ def chromium_status() -> tuple[bool, str]:
     return False, "尚未下载 Chromium；首次使用时下载一次即可。"
 
 
-_CHROMIUM_INSTALL_TIMEOUT = 600  # 下载 + 解压最长等待时间（秒）
+_CHROMIUM_INSTALL_TIMEOUT = 180  # 下载 + 解压最长等待时间（秒）
 
 
 def install_chromium(report: Callable[[str], None]) -> None:
@@ -69,6 +69,12 @@ def install_chromium(report: Callable[[str], None]) -> None:
     except subprocess.TimeoutExpired:
         process.kill()
         process.wait()
+        reader.join(timeout=5)
+        # Playwright CLI 在 Windows 上可能在解压后挂起，但文件实际已就绪
+        available, detail = chromium_status()
+        if available:
+            report("Chromium 下载完成。")
+            return
         raise RuntimeError(
             f"Chromium 下载超时（{_CHROMIUM_INSTALL_TIMEOUT} 秒），请检查网络后重试。"
         )
