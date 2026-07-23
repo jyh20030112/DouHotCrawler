@@ -6,17 +6,25 @@ import asyncio
 import select
 import signal
 import sys
+from collections.abc import Callable
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CacheMode, CrawlerRunConfig
 
 from .config import LOGIN_URL, PROFILE_PATH
 
 
-async def _wait_for_completion(stop_event: asyncio.Event) -> None:
+async def _wait_for_completion(
+    stop_event: asyncio.Event,
+    stop_requested: Callable[[], bool] | None = None,
+) -> None:
     """等待终端或 GUI 写入 q；不读取或打印任何登录凭据。"""
 
     print("请在浏览器中扫码登录。完成后输入 q 并回车，或点击“已完成扫码，保存登录”。")
     while not stop_event.is_set():
+        if stop_requested and stop_requested():
+            print("已收到停止请求，正在保存登录状态…")
+            stop_event.set()
+            continue
         try:
             readable, _, _ = select.select([sys.stdin], [], [], 0)
         except (OSError, ValueError):
@@ -41,7 +49,7 @@ def _login_run_config() -> CrawlerRunConfig:
     )
 
 
-async def run_login() -> None:
+async def run_login(*, stop_requested: Callable[[], bool] | None = None) -> None:
     """使用爬虫同一持久化 Profile 打开 Douhot 首页并等待扫码。"""
 
     stop_event = asyncio.Event()
@@ -83,7 +91,7 @@ async def run_login() -> None:
                 f"{result.error_message or '未知解析错误'}"
             )
         print(f"登录页面已打开：{LOGIN_URL}")
-        await _wait_for_completion(stop_event)
+        await _wait_for_completion(stop_event, stop_requested)
         print("正在保存登录状态…")
     finally:
         if signal_handler_installed:

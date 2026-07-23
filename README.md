@@ -163,4 +163,19 @@ uv run douhot-gui
 
 界面中的“终止当前任务”会请求安全停止：爬虫完成正在处理的记录后，会将本页已采集数据写入 Excel 再退出；口播提取已按条写入。尚未取得详情的当前视频会在下次运行时重新处理。
 - 页面选择器依赖 Douhot 当前页面结构；若页面改版，优先检查 `page_actions.py` 和 `collector.py`。
+
+## 桌面版打包与发布
+
+桌面版使用 PyInstaller 的 `onedir` 模式打包；用户无需安装 Python 或项目依赖。构建必须在目标系统和架构的原生环境执行：PyInstaller 不能跨平台生成可靠的可执行文件。
+
+本地构建当前平台的包：
+
+```bash
+uv sync --group build
+bash scripts/build_package.sh
+```
+
+产物位于 `dist/DouHotCrawler/`。请将整个目录压缩后分发，不要只分发其中的主程序。首次实际爬取仍需要可用的 Chromium；应用会使用 Crawl4AI 的浏览器管理机制及用户本机的持久化 Profile，登录状态保存在用户主目录下而不会写入安装包。
+
+GitHub Actions 会在普通提交和 Pull Request 上运行测试；推送 `v*` 标签或手动触发工作流时，在 Windows x86_64 / ARM64、macOS Intel / Apple Silicon、Linux x86_64 / ARM64 六种原生 runner 上构建，并上传对应产物。
 - 当前为单进程运行，适合先稳定采集和沉淀数据；并发、任务队列、断点续跑可放在下一阶段实现。
