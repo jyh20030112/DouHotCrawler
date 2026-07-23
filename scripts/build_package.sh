@@ -6,7 +6,7 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
 
-uv run --group build pyinstaller \
+uv run --no-sync --group build pyinstaller \
   --noconfirm \
   --clean \
   --onedir \
