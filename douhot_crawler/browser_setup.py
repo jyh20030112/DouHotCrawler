@@ -26,6 +26,9 @@ def chromium_status() -> tuple[bool, str]:
     return False, "尚未下载 Chromium；首次使用时下载一次即可。"
 
 
+_CHROMIUM_INSTALL_TIMEOUT = 600  # 下载 + 解压最长等待时间（秒）
+
+
 def install_chromium(report: Callable[[str], None]) -> None:
     """调用随应用分发的 Playwright 驱动下载 Chromium。"""
 
@@ -33,20 +36,24 @@ def install_chromium(report: Callable[[str], None]) -> None:
 
     node, cli = compute_driver_executable()
     report("开始下载 Chromium，下载时间取决于网络状况…")
-    process = subprocess.Popen(
-        [node, cli, "install", "chromium"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=get_driver_env(),
-    )
-    assert process.stdout is not None
-    for line in process.stdout:
+    try:
+        result = subprocess.run(
+            [node, cli, "install", "chromium"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=get_driver_env(),
+            timeout=_CHROMIUM_INSTALL_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(
+            f"Chromium 下载超时（{_CHROMIUM_INSTALL_TIMEOUT} 秒），请检查网络后重试。"
+        )
+    for line in result.stdout.splitlines():
         if line.strip():
-            report(line.rstrip())
-    if process.wait() != 0:
+            report(line.strip())
+    if result.returncode != 0:
         raise RuntimeError("Chromium 下载失败，请检查网络后重试。")
 
     available, detail = chromium_status()
