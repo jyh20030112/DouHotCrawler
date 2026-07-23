@@ -16,19 +16,21 @@ _patched = False
 
 
 def apply() -> None:
-    """注入 channel 到 Playwright 启动方法中（幂等）。"""
+    """注入 channel 到 Playwright 启动方法中（幂等）。
+
+    环境变量 _DOUHOT_CHANNEL 可能在 apply() 之后才被 chromium_status()
+    设置，因此必须在 patched 函数内部延迟读取，而不是在 apply() 时捕获。
+    """
     global _patched
     if _patched:
-        return
-
-    channel = os.environ.get("_DOUHOT_CHANNEL")
-    if not channel:
         return
 
     _original_lpc = BrowserType.launch_persistent_context
 
     async def _patched_lpc(self: BrowserType, user_data_dir, **kwargs):  # type: ignore[no-untyped-def]
-        kwargs.setdefault("channel", channel)
+        channel = os.environ.get("_DOUHOT_CHANNEL")
+        if channel:
+            kwargs.setdefault("channel", channel)
         return await _original_lpc(self, user_data_dir, **kwargs)
 
     BrowserType.launch_persistent_context = _patched_lpc  # type: ignore[method-assign]
@@ -36,7 +38,9 @@ def apply() -> None:
     _original_launch = BrowserType.launch
 
     async def _patched_launch(self: BrowserType, **kwargs):  # type: ignore[no-untyped-def]
-        kwargs.setdefault("channel", channel)
+        channel = os.environ.get("_DOUHOT_CHANNEL")
+        if channel:
+            kwargs.setdefault("channel", channel)
         return await _original_launch(self, **kwargs)
 
     BrowserType.launch = _patched_launch  # type: ignore[method-assign]
