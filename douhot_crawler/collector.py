@@ -151,6 +151,10 @@ async def collect_all_video_details(
         page_records: list[VideoRecord] = []
 
         for index in range(row_count):
+            if stop_requested():
+                print("停止请求已收到，不再开始下一条详情采集")
+                break
+
             try:
                 row = rows.nth(index)
                 list_record = await extract_video_list_record(
@@ -188,6 +192,10 @@ async def collect_all_video_details(
                     await page.wait_for_timeout(wait_seconds * 1_000)
             except Exception as exc:
                 print(f"  [{index + 1}] 获取 video_id 失败：{exc}", file=sys.stderr)
+
+            if stop_requested():
+                print("当前记录处理已结束，准备写入本页已有数据")
+                break
 
         if page_records:
             await persist_page(page_records, page_number)
