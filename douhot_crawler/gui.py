@@ -31,6 +31,7 @@ from douhot_crawler.cookie_status import CookieStatus, inspect_douhot_cookie
 from douhot_crawler.analyzer import (DEFAULT_COOKIE_PATH, DEFAULT_EXCEL_PATH,
                                      analyze_excel)
 from douhot_crawler.app import run as run_crawler
+from douhot_crawler.browser_setup import chromium_status, install_chromium
 from douhot_crawler.config import RESULT_EXCEL_PATH
 from douhot_crawler.login import run_login
 from douhot_crawler.models import RunOptions
@@ -69,6 +70,29 @@ class CookieCheckWorker(QObject):
     def check(self) -> None:
         self.completed.emit(inspect_douhot_cookie())
         self.finished.emit()
+
+
+class BrowserWorker(QObject):
+    """在后台检查或下载 Chromium，避免阻塞图形界面。"""
+
+    output = Signal(str)
+    completed = Signal(bool, str)
+    finished = Signal()
+
+    def __init__(self, *, install: bool = False) -> None:
+        super().__init__()
+        self.install = install
+
+    @Slot()
+    def run(self) -> None:
+        try:
+            if self.install:
+                install_chromium(self.output.emit)
+            self.completed.emit(*chromium_status())
+        except Exception as exc:
+            self.completed.emit(False, str(exc))
+        finally:
+            self.finished.emit()
 
 
 class _GuiLogStream(io.TextIOBase):
@@ -223,11 +247,16 @@ class DouhotGui(QMainWindow):
         self._task_kind: str | None = None
         self._cookie_thread: QThread | None = None
         self._cookie_worker: CookieCheckWorker | None = None
+        self._browser_thread: QThread | None = None
+        self._browser_worker: BrowserWorker | None = None
+        self._browser_ready = False
+        self._browser_prompted = False
         self.setWindowTitle("Douhot 爬取与口播提取")
         self.resize(1000, 800)
         self.setMinimumSize(1500, 1200)
         self._build_ui()
         self._set_status("就绪 · 等待开始", "#38bdf8")
+        self._check_browser()
         self._refresh_crawler_cookie_status()
         self._refresh_transcript_cookie_status()
         self.crawler_cookie_timer = QTimer(self)
@@ -292,6 +321,7 @@ class DouhotGui(QMainWindow):
         page_layout = QVBoxLayout(page)
         page_layout.setContentsMargins(0, 0, 0, 0)
         page_layout.setSpacing(14)
+        page_layout.addWidget(self._build_browser_card())
         page_layout.addWidget(self._build_crawler_cookie_card())
         card = self._card(
             "创建热榜采集任务", "每页数据会即时保存到结果库，适合长时间稳定运行。"
@@ -324,6 +354,21 @@ class DouhotGui(QMainWindow):
         page_layout.addWidget(card)
         page_layout.addStretch(1)
         return page
+
+    def _build_browser_card(self) -> QFrame:
+        card = self._card(
+            "浏览器准备",
+            "首次使用需要 Chromium。检测到缺失时可在这里一键下载。",
+        )
+        self.browser_badge = AdaptivePushButton("Chromium 检测中…")
+        self.browser_badge.setMinimumWidth(180)
+        self.browser_badge.setSizePolicy(
+            QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed
+        )
+        self.browser_badge.setToolTip("正在检查 Chromium。")
+        self.browser_badge.clicked.connect(self.handle_browser_click)
+        card.layout().addWidget(self.browser_badge, 0, Qt.AlignmentFlag.AlignLeft)
+        return card
 
     def _build_analyze_tab(self) -> QFrame:
         page = QWidget()
@@ -462,6 +507,8 @@ class DouhotGui(QMainWindow):
             QMessageBox.warning(self, "缺少关键词", "请输入要爬取的关键词。")
             self.keyword.setFocus()
             return
+        if not self._require_browser():
+            return
         cookie_status = inspect_douhot_cookie()
         self._show_crawler_cookie_status(cookie_status)
         if cookie_status.state in {"missing", "expired"}:
@@ -515,6 +562,8 @@ class DouhotGui(QMainWindow):
     def _start_login(self) -> None:
         """启动同一 Profile 的扫码登录浏览器。"""
 
+        if not self._require_browser():
+            return
         self._start_task("等待扫码登录", "login", None)
 
     def _start_task(
@@ -613,6 +662,91 @@ class DouhotGui(QMainWindow):
     def _set_status(self, text: str, color: str) -> None:
         self.status_text.setText(text)
         self.status_dot.setStyleSheet(f"color: {color};")
+
+    def _check_browser(self) -> None:
+        self._start_browser_worker(install=False)
+
+    def handle_browser_click(self) -> None:
+        if self._browser_thread and self._browser_thread.isRunning():
+            return
+        if self._browser_ready:
+            self._check_browser()
+            return
+        self._offer_browser_download()
+
+    def _offer_browser_download(self) -> None:
+        if self._browser_thread and self._browser_thread.isRunning():
+            return
+        accepted = QMessageBox.question(
+            self,
+            "下载 Chromium",
+            "首次使用爬取功能需要下载 Chromium。\n"
+            "下载过程中请保持网络连接，完成后即可扫码登录和开始爬取。\n\n"
+            "现在下载吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if accepted == QMessageBox.StandardButton.Yes:
+            self._start_browser_worker(install=True)
+
+    def _start_browser_worker(self, *, install: bool) -> None:
+        if self._browser_thread and self._browser_thread.isRunning():
+            return
+        self.browser_badge.setText(
+            "正在下载 Chromium…" if install else "Chromium 检测中…"
+        )
+        self.browser_badge.setToolTip(
+            "首次下载可能需要几分钟，请保持网络连接。"
+            if install
+            else "正在检查 Chromium。"
+        )
+        self.browser_badge.setStyleSheet(
+            "color: #38bdf8; background: #13324a; border-radius: 7px; padding: 6px 9px;"
+        )
+        thread = QThread(self)
+        worker = BrowserWorker(install=install)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.output.connect(self._append_output)
+        worker.completed.connect(self._show_browser_status)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._browser_check_finished)
+        self._browser_thread = thread
+        self._browser_worker = worker
+        if install:
+            self.log.appendPlainText("\n开始下载 Chromium…")
+        thread.start()
+
+    @Slot(bool, str)
+    def _show_browser_status(self, available: bool, detail: str) -> None:
+        self._browser_ready = available
+        if available:
+            self.browser_badge.setText("Chromium 已就绪")
+            self.browser_badge.setToolTip(f"{detail}\n点击可重新检测。")
+            foreground, background = "#34d399", "#123a35"
+        else:
+            self.browser_badge.setText("下载 Chromium")
+            self.browser_badge.setToolTip(f"{detail}\n点击开始下载。")
+            foreground, background = "#fbbf24", "#3d3112"
+            if not self._browser_prompted:
+                self._browser_prompted = True
+                QTimer.singleShot(200, self._offer_browser_download)
+        self.browser_badge.setStyleSheet(
+            "border-radius: 7px; padding: 6px 9px; "
+            f"color: {foreground}; background: {background};"
+        )
+
+    def _require_browser(self) -> bool:
+        if self._browser_ready:
+            return True
+        QMessageBox.information(
+            self,
+            "Chromium 尚未就绪",
+            "请先在“浏览器准备”中下载 Chromium，完成后再登录或开始爬取。",
+        )
+        return False
 
     def _refresh_crawler_cookie_status(self) -> None:
         """后台刷新 Profile Cookie 状态，避免与正在运行的浏览器争用界面线程。"""
@@ -775,10 +909,20 @@ class DouhotGui(QMainWindow):
         self._cookie_thread = None
         self._cookie_worker = None
 
+    def _browser_check_finished(self) -> None:
+        self._browser_thread = None
+        self._browser_worker = None
+
     def closeEvent(self, event) -> None:  # type: ignore[override]
         if self._task_thread and self._task_thread.isRunning():
             QMessageBox.information(
                 self, "任务仍在运行", "请先使用“终止当前任务”安全停止后再关闭界面。"
+            )
+            event.ignore()
+            return
+        if self._browser_thread and self._browser_thread.isRunning():
+            QMessageBox.information(
+                self, "浏览器正在下载", "请等待 Chromium 下载完成后再关闭界面。"
             )
             event.ignore()
             return

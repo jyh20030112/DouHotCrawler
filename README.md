@@ -1,181 +1,86 @@
-# Douhot 热榜爬虫（MVP）
+# DouHotCrawler 使用指南
 
-基于 Crawl4AI 和已登录的 Douhot 浏览器 Profile，按关键词检索抖音热榜视频，采集榜单指标、视频链接和高赞评论，并增量写入一个 Excel 结果库。
+DouHotCrawler 用于按关键词采集 Douhot 热榜视频，并将结果保存为 Excel；也可以为已有视频补全口播文本。
 
-当前版本是第一阶段 MVP：已跑通搜索、筛选、分页采集、详情页信息提取、评论采集和 Excel 增量入库。
+使用桌面版无需安装 Python、uv 或其他开发工具。
 
-## 功能
+## 下载正确的版本
 
-- 按关键词搜索 Douhot 视频榜。
-- 选择类型筛选和时间范围筛选。
-- 采集视频名称、博主、粉丝数、热度、播放/点赞增量、点赞率与前四条高赞评论。
-- 通过详情页 `video_id` 生成标准抖音视频链接。
-- 结果保存到 `result/result.xlsx`，每个关键词对应一个 Sheet。
-- 使用“视频名称 + 博主名称”增量去重；已存在的视频会在列表页被跳过，不再打开详情页。
+在 GitHub 的 **Actions** 页面打开一次成功的 “Package desktop application” 工作流，下载与你的电脑相符的构建产物。
 
-## 环境要求
-
-- Python 3.12+
-- [uv](https://docs.astral.sh/uv/)
-- 已安装 Chromium（Crawl4AI 会使用受管浏览器）
-- 可登录的 Douhot / 抖音账号
-
-安装依赖：
-
-```bash
-uv sync
-```
-
-## 首次使用：创建登录 Profile
-
-爬虫复用本地浏览器 Profile：`~/.crawl4ai/profiles/douhot`。首次运行前执行：
-
-```bash
-uv run crwl profiles
-```
-
-在打开的浏览器中登录 Douhot，完成后按 `q` 保存并退出。之后正常运行无需重复登录；若登录状态失效，重新创建或更新该 Profile。
-
-图形界面会自动检查本地 Profile 中的 Douhot 登录 Cookie，并显示有效、即将过期、已过期或缺失状态。该状态依据本地 Cookie 的到期时间，无法识别服务端主动吊销但尚未到期的 Cookie。
-
-图形界面将两类凭据分别显示在对应页签：
-
-- “爬虫Cookie检测”检查 Crawl4AI 的 Douhot Profile；失效后点击状态按钮打开扫码登录。
-- “口播Cookie检测”检查 `cookie.config` 中 `www.douyin.com` 的 Cookie；过期后在输入框粘贴新 Cookie 并保存。该检查从 `sid_guard` 的本地有效期判断，无法解析有效期时会标记为“已配置”，由实际口播提取最终验证。
-
-## 运行
-
-最小命令：
-
-```bash
-uv run douhot-crawl "大健康"
-```
-
-指定筛选条件：
-
-```bash
-uv run douhot-crawl "大健康" \
-  --result-type "低粉爆款" \
-  --time-range "近1天"
-```
-
-可用参数：
-
-| 参数 | 说明 |
+| 下载包名称 | 适用设备 |
 | --- | --- |
-| `keyword` | 必填，搜索关键词。 |
-| `--result-type` | 类型筛选；默认 `低粉爆款`。 |
-| `--time-range` | `近1小时`、`近1天`、`近3天` 或 `近7天`；默认 `近7天`。 |
-| `--input-timeout` | 等待搜索框渲染的秒数；默认 `30`。 |
-| `--detail-delay` | 每条新视频详情采集后的基础等待秒数；默认 `1`，会随机浮动 ±`0.2` 秒。 |
-| `--headless` | 无头运行；首次排错时建议不使用。 |
+| `DouHotCrawler-windows-x86_64` | 普通 Windows 电脑，Intel 或 AMD 处理器 |
+| `DouHotCrawler-windows-arm64` | Windows on ARM 电脑，例如 Snapdragon X 系列 |
+| `DouHotCrawler-macos-x86_64` | Intel 芯片的 Mac |
+| `DouHotCrawler-macos-arm64` | Apple 芯片的 Mac（M1、M2、M3、M4 等） |
+| `DouHotCrawler-linux-x86_64` | Intel 或 AMD 处理器的 Linux 电脑 |
+| `DouHotCrawler-linux-arm64` | ARM64 Linux 设备 |
 
-### 安全退出
+不确定 Mac 芯片类型时，点击屏幕左上角 Apple 菜单 → “关于本机”：显示“芯片 Apple ……”时选择 `macos-arm64`；显示“处理器 Intel ……”时选择 `macos-x86_64`。
 
-运行期间，在启动命令的终端输入 `q` 并按回车。程序会完成当前页采集、写入该页 Excel 数据并关闭浏览器，然后正常退出；不需要使用 `Ctrl+C`。
+## 首次使用
 
-## 输出与增量规则
+开始前请准备稳定网络、可登录 Douhot 和抖音的个人账号，并预留足够磁盘空间供首次下载 Chromium。
 
-输出文件固定为：
+1. 解压下载文件。
+2. 保留整个 `DouHotCrawler` 文件夹，不要只移动其中的主程序。
+3. 启动主程序：
+   - Windows：双击 `DouHotCrawler.exe`。
+   - macOS：双击 `DouHotCrawler`；若系统阻止打开，在 Finder 中按住 Control 点击程序，再选择“打开”。
+   - Linux：在文件夹内执行 `chmod +x DouHotCrawler`，再双击或运行 `./DouHotCrawler`。
+4. 程序会检查 Chromium。首次缺失时会显示下载提示，点击“是”并等待下载完成；下载完成前请保持程序打开和网络连接。
+5. 在“热榜爬取”页的“浏览器准备”中确认显示“Chromium 已就绪”。
+6. 点击“爬虫 Cookie 检测”的状态按钮，浏览器会打开 Douhot 登录页。完成扫码后，回到程序点击“已完成扫码，保存登录”。
+7. 如需提取口播，在“口播提取”页粘贴你自己从抖音网页取得的完整 Cookie，并点击“保存 Cookie”。请勿向他人发送 Cookie。
 
-```text
-result/result.xlsx
-```
+完成以上步骤后，后续启动通常不需要再次下载 Chromium 或重复登录；登录状态失效时按相同步骤重新登录或更新 Cookie。
 
-每个关键词有独立 Sheet。表头如下：
+## 采集热榜
 
-```text
-序号、类型、爬取到的时间、时间类型、视频名称、视频的url、博主名称、
-总粉丝数、热度值、新增播放量、新增点赞量、点赞率、高赞评论
-```
+1. 打开“热榜爬取”。
+2. 输入关键词，例如“美容”。
+3. 选择榜单类型和时间范围。
+4. 点击“开始爬取”。
+5. 在下方“运行日志”查看进度。任务结束后，结果会保存到 Excel。
 
-同一关键词再次运行时：
+重复采集同一关键词时，已存在的视频会自动跳过，适合持续补充数据。
 
-1. 先读取该 Sheet 中已有的“视频名称 + 博主名称”。
-2. 列表页命中已有组合时，跳过详情页，不再重复请求。
-3. 每完成一页采集，就将该页新视频追加到 Sheet 末尾。
+## 提取视频口播
 
-因此手动暂停或异常退出时，已经完成的页面不会丢失；最多丢失正在采集、尚未完成写入的当前页。
+1. 先完成至少一次热榜采集，确保已有结果 Excel。
+2. 打开“口播提取”。
+3. 如有需要，填写指定 Sheet 名称、最多处理条数或请求间隔。
+4. 点击“开始提取口播”。
 
-这个去重键适合高效增量采集；极少数情况下，同一博主发布同名不同视频可能被视为重复。
+已写入口播的记录默认跳过；如确实要重新提取，勾选“覆盖已有口播”。
 
-## 项目结构
+## 导出与安全停止
 
-```text
-.
-├── douhot_crawler/
-│   ├── __main__.py            # douhot-crawl 命令入口
-│   ├── analyzer.py            # douhot-analyze 命令入口与口播写入
-│   ├── gui.py                 # douhot-gui 图形界面
-│   ├── login_cli.py           # douhot-login 命令入口
-│   ├── app.py                 # 运行编排：浏览器、钩子、入库
-│   ├── cli.py                 # 命令行参数
-│   ├── config.py              # URL、默认值和输出字段
-│   ├── cookie_status.py        # Crawl4AI Profile Cookie 检测
-│   ├── transcript_cookie_status.py  # 口播 Cookie 检测与安全保存
-│   ├── login.py                # Douhot 扫码登录流程
-│   ├── models.py              # RunOptions、视频记录与去重键
-│   ├── page_actions.py        # 搜索框、搜索提交、类型/时间筛选
-│   ├── collector.py           # 列表解析、详情页采集、分页
-│   ├── comments.py            # 评论分析页与高赞评论提取
-│   └── storage.py             # Excel 表头迁移、增量去重与写入
-├── scripts/
-│   └── gui.sh                 # GUI shell 启动器
-├── tests/
-│   └── test_cookie_status.py  # Cookie 检测与保存测试
-├── result/
-│   └── result.xlsx            # 运行后生成的总结果库
-├── cookie.config              # 口播提取的抖音 Cookie（运行时文件）
-├── pyproject.toml
-└── uv.lock
-```
+- 任务完成后，点击窗口顶部“下载 Excel”，选择保存位置即可导出结果。
+- 需要停止时，点击“终止当前任务”。程序会完成当前记录，并保存已完成的内容后停止。
+- 请在任务结束后再关闭程序或导出 Excel。
 
-## 当前边界与下一步
+## 常见问题
 
-- 新视频详情采集默认间隔为 `1 ± 0.2` 秒；如需更保守，可通过 `--detail-delay` 增大基础等待时间。
-- 视频记录按页写入后立即释放，详情页弹窗也会逐条关闭，避免长任务累积页面对象和记录列表。
+### 无法下载 Chromium
 
-## 第二阶段：视频口播提取
+检查网络连接、磁盘空间和系统代理设置，然后点击“下载 Chromium”重试。Linux 电脑还需要具备正常的图形桌面运行环境。
 
-`douhot-analyze` 会读取 `result/result.xlsx` 的“视频的url”列，使用 `cookie.config` 调用视频提取接口，并将接口返回的 `transcript` 写入“视频口播”列。已有口播的行默认跳过，支持断点续跑。
+### 无法开始爬取
 
-```bash
-uv run douhot-analyze
-```
+确认“浏览器准备”显示“Chromium 已就绪”，并已完成 Douhot 扫码登录。
 
-先小批量验证一个 Sheet：
+### 无法提取口播
 
-```bash
-uv run douhot-analyze --sheet "美容" --limit 1
-```
+请重新从抖音网页复制完整 Cookie 并保存。Cookie 可能因退出登录、过期或账号状态变化而失效。
 
-## 图形界面
+### Windows 或 macOS 提示未知开发者
 
-图形界面基于 PySide6 与 QFluentWidgets，可从一个窗口启动热榜爬取或口播提取，并查看实时日志：
+这是未签名应用的系统安全提示。请确认下载来源正确后，按系统提示继续打开；不要从不可信来源下载程序。
 
-```bash
-uv run douhot-gui
-```
+## 隐私与账号安全
 
-顶部“下载 Excel”可将 `result/result.xlsx` 导出到自选位置；为保证文件完整，请在任务结束后使用。
-
-在 KDE/Wayland 下，界面使用 Qt 原生 Wayland text-input 协议，由 KWin 转交给 Fcitx；启动时会忽略全局 `QT_IM_MODULE`，避免 PySide6 与系统 Fcitx Qt 插件的 ABI 不兼容。不再依赖 Tk/XIM。
-
-界面中的“终止当前任务”会请求安全停止：爬虫完成正在处理的记录后，会将本页已采集数据写入 Excel 再退出；口播提取已按条写入。尚未取得详情的当前视频会在下次运行时重新处理。
-- 页面选择器依赖 Douhot 当前页面结构；若页面改版，优先检查 `page_actions.py` 和 `collector.py`。
-
-## 桌面版打包与发布
-
-桌面版使用 PyInstaller 的 `onedir` 模式打包；用户无需安装 Python 或项目依赖。构建必须在目标系统和架构的原生环境执行：PyInstaller 不能跨平台生成可靠的可执行文件。
-
-本地构建当前平台的包：
-
-```bash
-uv sync --group build
-bash scripts/build_package.sh
-```
-
-产物位于 `dist/DouHotCrawler/`。请将整个目录压缩后分发，不要只分发其中的主程序。首次实际爬取仍需要可用的 Chromium；应用会使用 Crawl4AI 的浏览器管理机制及用户本机的持久化 Profile，登录状态保存在用户主目录下而不会写入安装包。
-
-GitHub Actions 会在普通提交和 Pull Request 上运行测试；推送 `v*` 标签或手动触发工作流时，在 Windows x86_64 / ARM64、macOS Intel / Apple Silicon、Linux x86_64 / ARM64 六种原生 runner 上构建，并上传对应产物。
-- 当前为单进程运行，适合先稳定采集和沉淀数据；并发、任务队列、断点续跑可放在下一阶段实现。
+- Douhot 登录状态和抖音 Cookie 仅保存在使用者自己的电脑上。
+- 不要上传、共享或发送 Cookie、登录二维码、结果 Excel 或包含个人信息的日志。
+- 使用前请确认你的账号和使用方式符合相关平台的规则。
