@@ -31,7 +31,11 @@ from douhot_crawler.cookie_status import CookieStatus, inspect_douhot_cookie
 from douhot_crawler.analyzer import (DEFAULT_COOKIE_PATH, DEFAULT_EXCEL_PATH,
                                      analyze_excel)
 from douhot_crawler.app import run as run_crawler
-from douhot_crawler.browser_setup import chromium_status, install_chromium
+from douhot_crawler.browser_setup import (
+    chromium_status,
+    detect_system_browser,
+    install_chromium,
+)
 from douhot_crawler.config import RESULT_EXCEL_PATH
 from douhot_crawler.login import run_login
 from douhot_crawler.models import RunOptions
@@ -358,14 +362,14 @@ class DouhotGui(QMainWindow):
     def _build_browser_card(self) -> QFrame:
         card = self._card(
             "浏览器准备",
-            "首次使用需要 Chromium。检测到缺失时可在这里一键下载。",
+            "优先使用系统安装的 Chrome / Edge；如未找到则可下载 Chromium。",
         )
-        self.browser_badge = AdaptivePushButton("Chromium 检测中…")
+        self.browser_badge = AdaptivePushButton("浏览器检测中…")
         self.browser_badge.setMinimumWidth(180)
         self.browser_badge.setSizePolicy(
             QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed
         )
-        self.browser_badge.setToolTip("正在检查 Chromium。")
+        self.browser_badge.setToolTip("正在检测浏览器。")
         self.browser_badge.clicked.connect(self.handle_browser_click)
         card.layout().addWidget(self.browser_badge, 0, Qt.AlignmentFlag.AlignLeft)
         return card
@@ -679,8 +683,8 @@ class DouhotGui(QMainWindow):
             return
         accepted = QMessageBox.question(
             self,
-            "下载 Chromium",
-            "首次使用爬取功能需要下载 Chromium。\n"
+            "下载浏览器",
+            "未检测到系统安装的 Chrome / Edge，需要下载 Chromium。\n"
             "下载过程中请保持网络连接，完成后即可扫码登录和开始爬取。\n\n"
             "现在下载吗？",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -693,12 +697,12 @@ class DouhotGui(QMainWindow):
         if self._browser_thread and self._browser_thread.isRunning():
             return
         self.browser_badge.setText(
-            "正在下载 Chromium…" if install else "Chromium 检测中…"
+            "正在下载浏览器…" if install else "浏览器检测中…"
         )
         self.browser_badge.setToolTip(
             "首次下载可能需要几分钟，请保持网络连接。"
             if install
-            else "正在检查 Chromium。"
+            else "正在检测浏览器。"
         )
         self.browser_badge.setStyleSheet(
             "color: #38bdf8; background: #13324a; border-radius: 7px; padding: 6px 9px;"
@@ -716,18 +720,19 @@ class DouhotGui(QMainWindow):
         self._browser_thread = thread
         self._browser_worker = worker
         if install:
-            self.log.appendPlainText("\n开始下载 Chromium…")
+            self.log.appendPlainText("\n开始下载浏览器…")
         thread.start()
 
     @Slot(bool, str)
     def _show_browser_status(self, available: bool, detail: str) -> None:
         self._browser_ready = available
         if available:
-            self.browser_badge.setText("Chromium 已就绪")
+            label = "浏览器已就绪"
+            self.browser_badge.setText(label)
             self.browser_badge.setToolTip(f"{detail}\n点击可重新检测。")
             foreground, background = "#34d399", "#123a35"
         else:
-            self.browser_badge.setText("下载 Chromium")
+            self.browser_badge.setText("下载浏览器")
             self.browser_badge.setToolTip(f"{detail}\n点击开始下载。")
             foreground, background = "#fbbf24", "#3d3112"
             if not self._browser_prompted:
@@ -743,8 +748,8 @@ class DouhotGui(QMainWindow):
             return True
         QMessageBox.information(
             self,
-            "Chromium 尚未就绪",
-            "请先在“浏览器准备”中下载 Chromium，完成后再登录或开始爬取。",
+            "浏览器尚未就绪",
+            "请先在“浏览器准备”中下载浏览器，完成后再登录或开始爬取。",
         )
         return False
 
@@ -922,7 +927,7 @@ class DouhotGui(QMainWindow):
             return
         if self._browser_thread and self._browser_thread.isRunning():
             QMessageBox.information(
-                self, "浏览器正在下载", "请等待 Chromium 下载完成后再关闭界面。"
+                self, "浏览器正在下载", "请等待浏览器下载完成后再关闭界面。"
             )
             event.ignore()
             return

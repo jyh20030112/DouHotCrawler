@@ -2,15 +2,65 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import threading
 from collections.abc import Callable
 from pathlib import Path
 
+# Playwright 在所有启动路径中都会读取该环境变量，用于指定 Chromium 可执行文件。
+_ENV_EXECUTABLE_PATH = "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"
+
+
+def detect_system_browser() -> str | None:
+    """检测系统已安装的 Chrome / Edge / Chromium，返回可执行文件路径。"""
+
+    if sys.platform == "win32":
+        candidates = [
+            os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(
+                r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"
+            ),
+            os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(
+                r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"
+            ),
+            os.path.expandvars(r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"),
+        ]
+    elif sys.platform == "darwin":
+        candidates = [
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+        ]
+    else:
+        candidates = [
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
+            "/usr/bin/chromium-browser",
+            "/usr/bin/chromium",
+            "/usr/bin/microsoft-edge",
+            "/usr/bin/microsoft-edge-stable",
+        ]
+
+    for path in candidates:
+        if Path(path).is_file():
+            return path
+    return None
+
 
 def chromium_status() -> tuple[bool, str]:
-    """返回 Playwright Chromium 是否已安装，以及可用于界面展示的说明。"""
+    """返回浏览器是否可用，以及可用于界面展示的说明。
+
+    优先检测系统安装的 Chrome / Edge；如未找到则回退到 Playwright
+    自带的 Chromium。
+    """
+
+    system = detect_system_browser()
+    if system:
+        os.environ.setdefault(_ENV_EXECUTABLE_PATH, system)
+        browser_name = _browser_label(system)
+        return True, f"{browser_name}已就绪：{system}"
 
     try:
         from playwright.sync_api import sync_playwright
@@ -37,6 +87,17 @@ def chromium_status() -> tuple[bool, str]:
         if entries:
             detail += f"；缓存目录已有：{', '.join(entries[:8])}"
     return False, detail
+
+
+def _browser_label(executable_path: str) -> str:
+    """根据路径返回友好的浏览器名称。"""
+
+    lower = executable_path.lower()
+    if "edge" in lower:
+        return "Edge "
+    if "chromium" in lower and "chrome" not in lower:
+        return "Chromium "
+    return "Chrome "
 
 
 _CHROMIUM_INSTALL_TIMEOUT = 600  # 下载 + 解压最长等待时间（秒）
