@@ -10,6 +10,10 @@ from datetime import datetime
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CacheMode, CrawlerRunConfig
 from playwright.async_api import Page
 
+from douhot_crawler.browser_patch import apply as _apply_browser_patch
+
+_apply_browser_patch()
+
 from .collector import collect_all_video_details
 from .config import PROFILE_PATH, RESULT_EXCEL_PATH, TARGET_URL
 from .models import RunOptions, VideoRecord

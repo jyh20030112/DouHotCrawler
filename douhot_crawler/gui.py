@@ -31,11 +31,7 @@ from douhot_crawler.cookie_status import CookieStatus, inspect_douhot_cookie
 from douhot_crawler.analyzer import (DEFAULT_COOKIE_PATH, DEFAULT_EXCEL_PATH,
                                      analyze_excel)
 from douhot_crawler.app import run as run_crawler
-from douhot_crawler.browser_setup import (
-    chromium_status,
-    detect_system_browser,
-    install_chromium,
-)
+from douhot_crawler.browser_setup import chromium_status, install_chromium
 from douhot_crawler.config import RESULT_EXCEL_PATH
 from douhot_crawler.login import run_login
 from douhot_crawler.models import RunOptions
