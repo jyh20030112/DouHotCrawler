@@ -578,7 +578,7 @@ class DouhotGui(FluentWindow):
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
 
         self.sheets = LineEdit()
-        self.sheets.setPlaceholderText("w qi")
+        self.sheets.setPlaceholderText("请输入已爬取的关键字")
         self.limit = LineEdit()
         self.limit.setPlaceholderText("留空表示不限")
         self.analyze_timeout = self._spin(1, 600, 90)
