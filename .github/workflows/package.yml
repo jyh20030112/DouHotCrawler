@@ -30,6 +30,8 @@ jobs:
         include:
           - target: windows-x86_64
             runner: windows-2022
+          - target: Linux-x86_64
+            runner: ubuntu-24.04
           # GitHub currently labels this hosted image as public preview. 
     runs-on: ${{ matrix.runner }}
     steps:
