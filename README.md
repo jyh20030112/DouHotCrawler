@@ -4,18 +4,18 @@ DouHotCrawler 用于按关键词采集 Douhot 热榜视频，并将结果保存�
 
 使用桌面版无需安装 Python、uv 或其他开发工具。
 
-## 下载正确的版本
+* [ ] 下载正确的版本
 
 在 GitHub 的 **Actions** 页面打开一次成功的 “Package desktop application” 工作流，下载与你的电脑相符的构建产物。
 
-| 下载包名称 | 适用设备 |
-| --- | --- |
-| `DouHotCrawler-windows-x86_64` | 普通 Windows 电脑，Intel 或 AMD 处理器 |
-| `DouHotCrawler-windows-arm64` | Windows on ARM 电脑，例如 Snapdragon X 系列 |
-| `DouHotCrawler-macos-x86_64` | Intel 芯片的 Mac |
-| `DouHotCrawler-macos-arm64` | Apple 芯片的 Mac（M1、M2、M3、M4 等） |
-| `DouHotCrawler-linux-x86_64` | Intel 或 AMD 处理器的 Linux 电脑 |
-| `DouHotCrawler-linux-arm64` | ARM64 Linux 设备 |
+| 下载包名称                       | 适用设备                                    |
+| -------------------------------- | ------------------------------------------- |
+| `DouHotCrawler-windows-x86_64` | 普通 Windows 电脑，Intel 或 AMD 处理器      |
+| `DouHotCrawler-windows-arm64`  | Windows on ARM 电脑，例如 Snapdragon X 系列 |
+| `DouHotCrawler-macos-x86_64`   | Intel 芯片的 Mac                            |
+| `DouHotCrawler-macos-arm64`    | Apple 芯片的 Mac（M1、M2、M3、M4 等）       |
+| `DouHotCrawler-linux-x86_64`   | Intel 或 AMD 处理器的 Linux 电脑            |
+| `DouHotCrawler-linux-arm64`    | ARM64 Linux 设备                            |
 
 不确定 Mac 芯片类型时，点击屏幕左上角 Apple 菜单 → “关于本机”：显示“芯片 Apple ……”时选择 `macos-arm64`；显示“处理器 Intel ……”时选择 `macos-x86_64`。
 
@@ -41,7 +41,7 @@ DouHotCrawler 用于按关键词采集 Douhot 热榜视频，并将结果保存�
 1. 打开“热榜爬取”。
 2. 输入关键词，例如“美容”。
 3. 选择榜单类型和时间范围。
-4. 点击“开始爬取”。
+4. 点击“开始采集”。
 5. 在下方“运行日志”查看进度。任务结束后，结果会保存到 Excel。
 
 重复采集同一关键词时，已存在的视频会自动跳过，适合持续补充数据。
@@ -67,7 +67,7 @@ DouHotCrawler 用于按关键词采集 Douhot 热榜视频，并将结果保存�
 
 检查网络连接、磁盘空间和系统代理设置，然后点击“下载 Chromium”重试。Linux 电脑还需要具备正常的图形桌面运行环境。
 
-### 无法开始爬取
+### 无法开始采集
 
 确认“浏览器准备”显示“Chromium 已就绪”，并已完成 Douhot 扫码登录。
 
