@@ -12,6 +12,9 @@ uv run --no-sync --group build pyinstaller \
   --onedir \
   --windowed \
   --name DouHotCrawler \
+  --icon douhot_crawler/resources/logo.ico \
+  --add-data "douhot_crawler/resources/logo.ico:douhot_crawler/resources" \
+  --add-data "douhot_crawler/resources/logo.png:douhot_crawler/resources" \
   --specpath build \
   --workpath build/pyinstaller \
   --distpath dist \
