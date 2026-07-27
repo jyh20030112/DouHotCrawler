@@ -12,3 +12,6 @@ wheels/
 result
 
 cookie.config
+
+uv.lock
+.python-version
