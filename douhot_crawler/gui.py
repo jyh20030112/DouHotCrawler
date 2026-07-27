@@ -54,7 +54,7 @@ os.environ.pop("QT_IM_MODULE", None)
 
 RESULT_TYPES = ("低粉爆款", "视频总榜", "高完播率", "高涨粉率", "高点赞率")
 TIME_RANGES = ("近1小时", "近1天", "近3天", "近7天")
-APP_ICON_PATH = Path(__file__).resolve().parent / "resources" / "logo.ico"
+APP_ICON_PATH = Path(__file__).resolve().parent / "resources" / "favicon.ico"
 
 APP_STYLESHEET = """
 QWidget#pageContent {
