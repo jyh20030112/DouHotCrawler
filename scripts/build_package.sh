@@ -6,15 +6,12 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
 
-ICON_PATH="$PROJECT_DIR/douhot_crawler/resources/logo.ico"
-LOGO_PATH="$PROJECT_DIR/douhot_crawler/resources/logo.png"
+ICON_PATH="$PROJECT_DIR/douhot_crawler/resources/favicon.ico"
 
-for resource in "$ICON_PATH" "$LOGO_PATH"; do
-  if [[ ! -f "$resource" ]]; then
-    echo "Required build resource not found: $resource" >&2
-    exit 1
-  fi
-done
+if [[ ! -f "$ICON_PATH" ]]; then
+  echo "Required build resource not found: $ICON_PATH" >&2
+  exit 1
+fi
 
 uv run --no-sync --group build pyinstaller \
   --noconfirm \
@@ -24,13 +21,20 @@ uv run --no-sync --group build pyinstaller \
   --name DouHotCrawler \
   --icon "$ICON_PATH" \
   --add-data "$ICON_PATH:douhot_crawler/resources" \
-  --add-data "$LOGO_PATH:douhot_crawler/resources" \
   --specpath build \
   --workpath build/pyinstaller \
   --distpath dist \
   --paths . \
+  --additional-hooks-dir scripts/pyinstaller_hooks \
   --collect-all qfluentwidgets \
   --collect-all crawl4ai \
   --collect-all playwright \
   --hidden-import playwright.async_api \
+  --exclude-module patchright \
+  --exclude-module scipy \
+  --exclude-module nltk \
+  --exclude-module transformers \
+  --exclude-module tokenizers \
+  --exclude-module huggingface_hub \
+  --exclude-module hf_xet \
   scripts/pyinstaller_gui.py
