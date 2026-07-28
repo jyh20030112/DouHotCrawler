@@ -14,8 +14,11 @@ from urllib.request import Request, urlopen
 from openpyxl import load_workbook
 
 
-DEFAULT_EXCEL_PATH = Path("result") / "result.xlsx"
-DEFAULT_COOKIE_PATH = Path("cookie.config")
+from douhot_crawler.config import COOKIE_CONFIG_PATH, RESULT_EXCEL_PATH
+
+
+DEFAULT_EXCEL_PATH = RESULT_EXCEL_PATH
+DEFAULT_COOKIE_PATH = COOKIE_CONFIG_PATH
 EXTRACT_API_URL = "http://example.invalid:28600/api/v1/videos/extract"
 VIDEO_URL_HEADER = "视频的url"
 TRANSCRIPT_HEADER = "视频口播"
@@ -31,7 +34,7 @@ def parse_args() -> argparse.Namespace:
         "--excel",
         type=Path,
         default=DEFAULT_EXCEL_PATH,
-        help="结果 Excel 路径（默认：result/result.xlsx）",
+        help="结果 Excel 路径",
     )
     parser.add_argument(
         "--cookie-file",

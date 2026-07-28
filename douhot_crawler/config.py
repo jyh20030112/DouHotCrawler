@@ -1,6 +1,23 @@
 """项目运行常量。"""
 
+import os
+import sys
 from pathlib import Path
+
+
+def _data_dir() -> Path:
+    """返回平台相关的用户数据目录。"""
+    if sys.platform == "win32":
+        base = os.environ.get(
+            "LOCALAPPDATA", str(Path.home() / "AppData" / "Local")
+        )
+    elif sys.platform == "darwin":
+        base = str(Path.home() / "Library" / "Application Support")
+    else:
+        base = os.environ.get(
+            "XDG_DATA_HOME", str(Path.home() / ".local" / "share")
+        )
+    return Path(base) / "DouHotCrawler"
 
 
 TARGET_URL = (
@@ -18,7 +35,8 @@ DETAIL_DELAY_JITTER = 0.2
 TIME_RANGE_CHOICES = ("近1小时", "近1天", "近3天", "近7天")
 
 DOUYIN_VIDEO_URL_PREFIX = "https://www.douyin.com/video/"
-RESULT_EXCEL_PATH = Path("result") / "result.xlsx"
+RESULT_EXCEL_PATH = _data_dir() / "result" / "result.xlsx"
+COOKIE_CONFIG_PATH = _data_dir() / "cookie.config"
 RESULT_HEADERS = [
     "序号",
     "类型",

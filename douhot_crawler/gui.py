@@ -1176,7 +1176,7 @@ class DouhotGui(FluentWindow):
         source = RESULT_EXCEL_PATH.resolve()
         if not source.is_file():
             self._show_message(
-                "暂无结果文件", "尚未找到 result/result.xlsx，请先完成一次爬取。"
+                "暂无结果文件", f"尚未找到 {RESULT_EXCEL_PATH}，请先完成一次爬取。"
             )
             return
 

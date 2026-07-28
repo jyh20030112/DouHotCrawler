@@ -9,9 +9,10 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from .cookie_status import CookieStatus
+from .config import COOKIE_CONFIG_PATH
 
 
-DEFAULT_TRANSCRIPT_COOKIE_PATH = Path("cookie.config")
+DEFAULT_TRANSCRIPT_COOKIE_PATH = COOKIE_CONFIG_PATH
 _EXPIRING_SOON = timedelta(days=7)
 
 
