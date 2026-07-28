@@ -66,15 +66,21 @@ jobs:
           else
             test -f dist/DouHotCrawler/DouHotCrawler
           fi
-      - name: Zip artifact
+      - name: Zip artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/DouHotCrawler -DestinationPath "DouHotCrawler-${{ matrix.target }}.zip"
+      - name: Zip artifact (macOS)
+        if: runner.os == 'macOS'
         shell: bash
         run: |
-          target="${{ matrix.target }}"
-          if [[ "${{ runner.os }}" == "macOS" ]]; then
-            (cd dist && zip -ry ../"DouHotCrawler-${target}.zip" DouHotCrawler.app)
-          else
-            (cd dist && zip -r ../"DouHotCrawler-${target}.zip" DouHotCrawler)
-          fi
+          (cd dist && zip -ry ../"DouHotCrawler-${{ matrix.target }}.zip" DouHotCrawler.app)
+      - name: Zip artifact (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          (cd dist && zip -r ../"DouHotCrawler-${{ matrix.target }}.zip" DouHotCrawler)
       - uses: actions/upload-artifact@v4
         with:
           name: DouHotCrawler-${{ matrix.target }}
