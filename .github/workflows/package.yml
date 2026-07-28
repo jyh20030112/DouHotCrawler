@@ -32,8 +32,6 @@ jobs:
             runner: windows-2022
           - target: Linux-x86_64
             runner: ubuntu-24.04
-          - target: macos-x86_64
-            runner: macos-13
           - target: macos-arm64
             runner: macos-15
     runs-on: ${{ matrix.runner }}
@@ -68,10 +66,19 @@ jobs:
           else
             test -f dist/DouHotCrawler/DouHotCrawler
           fi
+      - name: Zip artifact
+        shell: bash
+        run: |
+          target="${{ matrix.target }}"
+          if [[ "${{ runner.os }}" == "macOS" ]]; then
+            (cd dist && zip -ry ../"DouHotCrawler-${target}.zip" DouHotCrawler.app)
+          else
+            (cd dist && zip -r ../"DouHotCrawler-${target}.zip" DouHotCrawler)
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: DouHotCrawler-${{ matrix.target }}
-          path: ${{ runner.os == 'macOS' && 'dist/DouHotCrawler.app' || 'dist/DouHotCrawler' }}
+          path: DouHotCrawler-${{ matrix.target }}.zip
           if-no-files-found: error
 
   release:
@@ -85,13 +92,11 @@ jobs:
           pattern: DouHotCrawler-*
           path: artifacts
           merge-multiple: false
-      - name: Zip artifacts
+      - name: Collect zip files
+        shell: bash
         run: |
-          for dir in artifacts/*/; do
-            name=$(basename "$dir")
-            (cd artifacts && zip -r "../${name}.zip" "$name")
-          done
+          find artifacts -name '*.zip' -exec mv {} . \;
       - uses: softprops/action-gh-release@v2
         with:
-          files: "*.zip"
+          files: "DouHotCrawler-*.zip"
           generate_release_notes: true
