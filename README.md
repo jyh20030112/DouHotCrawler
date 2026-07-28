@@ -1,86 +1,142 @@
-# DouHotCrawler 使用指南
+# DouHotCrawler
 
-DouHotCrawler 用于按关键词采集 Douhot 热榜视频，并将结果保存为 Excel；也可以为已有视频补全口播文本。
+Douhot 数据工作台 — 按关键词采集 Douhot（抖音热榜）视频数据，提取视频口播文本，结果归档为 Excel。
 
-使用桌面版无需安装 Python、uv 或其他开发工具。
+桌面版无需安装 Python 或任何开发工具，开箱即用。
 
-* [ ] 下载正确的版本
+## 下载
 
-在 GitHub 的 **Actions** 页面打开一次成功的 “Package desktop application” 工作流，下载与你的电脑相符的构建产物。
+在 [GitHub Releases](https://github.com/jyh20030112/DouHotCrawler/releases) 页面下载最新版本，选择与你的电脑匹配的构建产物：
 
-| 下载包名称                       | 适用设备                                    |
-| -------------------------------- | ------------------------------------------- |
-| `DouHotCrawler-windows-x86_64` | 普通 Windows 电脑，Intel 或 AMD 处理器      |
-| `DouHotCrawler-windows-arm64`  | Windows on ARM 电脑，例如 Snapdragon X 系列 |
-| `DouHotCrawler-macos-x86_64`   | Intel 芯片的 Mac                            |
-| `DouHotCrawler-macos-arm64`    | Apple 芯片的 Mac（M1、M2、M3、M4 等）       |
-| `DouHotCrawler-linux-x86_64`   | Intel 或 AMD 处理器的 Linux 电脑            |
-| `DouHotCrawler-linux-arm64`    | ARM64 Linux 设备                            |
+| 下载文件 | 适用设备 |
+|---|---|
+| `DouHotCrawler-windows-x86_64.zip` | Windows 电脑（Intel / AMD 处理器） |
+| `DouHotCrawler-macos-arm64.zip` | Apple 芯片 Mac（M1 / M2 / M3 / M4 等） |
+| `DouHotCrawler-Linux-x86_64.zip` | Linux 电脑（Intel / AMD 处理器） |
 
-不确定 Mac 芯片类型时，点击屏幕左上角 Apple 菜单 → “关于本机”：显示“芯片 Apple ……”时选择 `macos-arm64`；显示“处理器 Intel ……”时选择 `macos-x86_64`。
+> 不确定 Mac 芯片类型：屏幕左上角 Apple 菜单 →「关于本机」，显示"芯片 Apple …"选 `macos-arm64`；显示"处理器 Intel …"选 `macos-x86_64`（Intel Mac 版本暂未提供构建，可自行从源码打包）。
 
 ## 首次使用
 
-开始前请准备稳定网络、可登录 Douhot 和抖音的个人账号，并预留足够磁盘空间供首次下载 Chromium。
+1. **解压**下载的 zip 文件，保留整个文件夹结构。
+2. **启动程序**：
+   - **Windows**：双击 `DouHotCrawler.exe`。
+   - **macOS**：双击 `DouHotCrawler.app`。若提示"无法验证开发者"，在 Finder 中按住 Control 点击 →「打开」即可。
+   - **Linux**：终端执行 `chmod +x DouHotCrawler && ./DouHotCrawler`。
+3. **下载浏览器**：首次启动若未检测到系统安装的 Chrome / Edge，程序会提示下载 Chromium。点击"立即下载"，等待完成。
+4. **扫码登录**：在"热榜采集"页点击爬虫 Cookie 状态按钮，浏览器打开 Douhot 登录页。扫码完成后回到程序，点击「已完成扫码，保存登录」。
+5. **（可选）配置口播 Cookie**：如需提取视频口播，在"口播提取"页粘贴抖音 `www.douyin.com` 的完整 Cookie，点击保存。
 
-1. 解压下载文件。
-2. 保留整个 `DouHotCrawler` 文件夹，不要只移动其中的主程序。
-3. 启动主程序：
-   - Windows：双击 `DouHotCrawler.exe`。
-   - macOS：双击 `DouHotCrawler`；若系统阻止打开，在 Finder 中按住 Control 点击程序，再选择“打开”。
-   - Linux：在文件夹内执行 `chmod +x DouHotCrawler`，再双击或运行 `./DouHotCrawler`。
-4. 程序会检查 Chromium。首次缺失时会显示下载提示，点击“是”并等待下载完成；下载完成前请保持程序打开和网络连接。
-5. 在“热榜爬取”页的“浏览器准备”中确认显示“Chromium 已就绪”。
-6. 点击“爬虫 Cookie 检测”的状态按钮，浏览器会打开 Douhot 登录页。完成扫码后，回到程序点击“已完成扫码，保存登录”。
-7. 如需提取口播，在“口播提取”页粘贴你自己从抖音网页取得的完整 Cookie，并点击“保存 Cookie”。请勿向他人发送 Cookie。
+后续启动无需重复下载或登录；Cookie 过期后按相同步骤更新即可。
 
-完成以上步骤后，后续启动通常不需要再次下载 Chromium 或重复登录；登录状态失效时按相同步骤重新登录或更新 Cookie。
+## 功能
 
-## 采集热榜
+### 热榜采集
 
-1. 打开“热榜爬取”。
-2. 输入关键词，例如“美容”。
-3. 选择榜单类型和时间范围。
-4. 点击“开始采集”。
-5. 在下方“运行日志”查看进度。任务结束后，结果会保存到 Excel。
+- 输入关键词（如"美容""大健康"），选择榜单类型（低粉爆款 / 视频总榜 / 高完播率等）和时间范围（近 1 小时 ~ 近 7 天）。
+- 自动跳过已采集的视频，支持持续增量补充。
+- 每页数据实时写入 Excel，可安全中断不丢数据。
 
-重复采集同一关键词时，已存在的视频会自动跳过，适合持续补充数据。
+### 口播提取
 
-## 提取视频口播
+- 对结果 Excel 中的视频调用提取接口，补全口播文本。
+- 支持指定 Sheet、限制处理条数、设置请求间隔。
+- 已有口播的记录默认跳过，可勾选覆盖。
 
-1. 先完成至少一次热榜采集，确保已有结果 Excel。
-2. 打开“口播提取”。
-3. 如有需要，填写指定 Sheet 名称、最多处理条数或请求间隔。
-4. 点击“开始提取口播”。
+### 导出与安全停止
 
-已写入口播的记录默认跳过；如确实要重新提取，勾选“覆盖已有口播”。
+- 任务完成后在"运行日志"页点击「导出 Excel」保存到本地。
+- 点击「终止当前任务」会完成当前记录并写入已采集数据后安全退出。
 
-## 导出与安全停止
+## 命令行工具
 
-- 任务完成后，点击窗口顶部“下载 Excel”，选择保存位置即可导出结果。
-- 需要停止时，点击“终止当前任务”。程序会完成当前记录，并保存已完成的内容后停止。
-- 请在任务结束后再关闭程序或导出 Excel。
+开发者和高级用户也可以通过 CLI 使用：
+
+```bash
+# 热榜采集
+uv run douhot-crawl "关键词" --result-type "低粉爆款" --time-range "近7天"
+
+# 口播提取
+uv run douhot-analyze --excel result/result.xlsx --cookie-file cookie.config
+
+# 扫码登录
+uv run douhot-login
+
+# 启动图形界面
+uv run douhot-gui
+```
+
+详细参数见 `--help`。
+
+## 开发
+
+### 环境要求
+
+- Python ≥ 3.12
+- [uv](https://docs.astral.sh/uv/) 包管理器
+
+### 本地运行
+
+```bash
+git clone https://github.com/jyh20030112/DouHotCrawler.git
+cd DouHotCrawler
+uv sync
+uv run douhot-gui
+```
+
+### 运行测试
+
+```bash
+uv run python -m unittest discover -s tests -v
+```
+
+### 打包
+
+```bash
+uv sync --group build
+bash scripts/build_package.sh
+```
+
+产物在 `dist/DouHotCrawler/`（macOS 为 `dist/DouHotCrawler.app`）。
+
+## 技术栈
+
+| 层 | 技术 |
+|---|---|
+| GUI | PySide6 + [PySide6-Fluent-Widgets](https://github.com/zhiyiYo/PySide6-Fluent-Widgets) |
+| 爬虫 | [Crawl4AI](https://github.com/unclecode/crawl4ai) + Playwright |
+| 数据处理 | openpyxl |
+| 打包 | PyInstaller（onedir 模式） |
+| 包管理 | uv + Hatchling |
+
+## CI / CD
+
+提交到 `main` 分支自动运行测试。推送 `v*` 标签触发：
+
+1. **Tests** — 单元测试（ubuntu）
+2. **Package** — 三平台并行构建（Windows / Linux / macOS arm64）
+3. **Release** — 自动创建 GitHub Release，上传所有平台的 zip 产物
 
 ## 常见问题
 
 ### 无法下载 Chromium
 
-检查网络连接、磁盘空间和系统代理设置，然后点击“下载 Chromium”重试。Linux 电脑还需要具备正常的图形桌面运行环境。
+检查网络和磁盘空间。Linux 需具备图形桌面环境。
 
 ### 无法开始采集
 
-确认“浏览器准备”显示“Chromium 已就绪”，并已完成 Douhot 扫码登录。
+确认"浏览器准备"显示已就绪，且爬虫 Cookie 状态为有效。Cookie 过期或未登录时点击状态按钮重新扫码。
 
-### 无法提取口播
+### 口播提取失败
 
-请重新从抖音网页复制完整 Cookie 并保存。Cookie 可能因退出登录、过期或账号状态变化而失效。
+重新从 `www.douyin.com` 复制完整 Cookie 粘贴保存。Cookie 可能因退出登录或过期而失效。
 
-### Windows 或 macOS 提示未知开发者
+### macOS / Windows 提示未知开发者
 
-这是未签名应用的系统安全提示。请确认下载来源正确后，按系统提示继续打开；不要从不可信来源下载程序。
+未签名应用的正常安全提示。确认从 GitHub Releases 下载，按系统提示继续打开即可。
 
-## 隐私与账号安全
+## 隐私与安全
 
-- Douhot 登录状态和抖音 Cookie 仅保存在使用者自己的电脑上。
-- 不要上传、共享或发送 Cookie、登录二维码、结果 Excel 或包含个人信息的日志。
-- 使用前请确认你的账号和使用方式符合相关平台的规则。
+- 登录状态和 Cookie 仅保存在使用者本地机器。
+- `cookie.config` 已加入 `.gitignore`，不会被提交。
+- 请勿分享 Cookie、登录二维码或含个人数据的日志与结果文件。
