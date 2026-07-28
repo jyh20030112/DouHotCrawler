@@ -30,11 +30,18 @@ jobs:
         include:
           - target: windows-x86_64
             runner: windows-2022
+          - target: Linux-x86_64
+            runner: ubuntu-24.04
           # GitHub currently labels this hosted image as public preview. 
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
+      - name: Install Linux GUI dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libegl1
       - name: Install build dependencies
         shell: bash
         run: |
