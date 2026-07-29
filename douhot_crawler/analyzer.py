@@ -13,11 +13,14 @@ from urllib.request import Request, urlopen
 
 from openpyxl import load_workbook
 
-from douhot_crawler.config import COOKIE_CONFIG_PATH, RESULT_EXCEL_PATH
+from douhot_crawler.config import (
+    COOKIE_CONFIG_PATH,
+    EXTRACT_API_URL,
+    RESULT_EXCEL_PATH,
+)
 
 DEFAULT_EXCEL_PATH = RESULT_EXCEL_PATH
 DEFAULT_COOKIE_PATH = COOKIE_CONFIG_PATH
-EXTRACT_API_URL = "http://example:28600/api/v1/videos/extract"
 VIDEO_URL_HEADER = "视频的url"
 TRANSCRIPT_HEADER = "视频口播"
 
@@ -94,6 +97,11 @@ def extract_transcript(
     timeout: float,
 ) -> str:
     """请求接口并返回视频口播文本。"""
+
+    if not EXTRACT_API_URL:
+        raise RuntimeError(
+            "未配置 EXTRACT_API_URL。请复制 .env.example 为 .env，并填写口播提取接口地址。"
+        )
 
     payload = json.dumps(
         {

@@ -5,6 +5,30 @@ import sys
 from pathlib import Path
 
 
+def _load_dotenv(path: Path) -> None:
+    """加载简单的 .env 文件，且不覆盖已设置的系统环境变量。"""
+    if not path.is_file():
+        return
+
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line.removeprefix("export ").lstrip()
+        key, separator, value = line.partition("=")
+        key = key.strip()
+        if not separator or not key:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        os.environ.setdefault(key, value)
+
+
+_load_dotenv(Path.cwd() / ".env")
+
+
 def _data_dir() -> Path:
     """返回平台相关的用户数据目录。"""
     if sys.platform == "win32":
@@ -37,6 +61,7 @@ TIME_RANGE_CHOICES = ("近1小时", "近1天", "近3天", "近7天")
 DOUYIN_VIDEO_URL_PREFIX = "https://www.douyin.com/video/"
 RESULT_EXCEL_PATH = _data_dir() / "result" / "result.xlsx"
 COOKIE_CONFIG_PATH = _data_dir() / "cookie.config"
+EXTRACT_API_URL = os.environ.get("EXTRACT_API_URL", "").strip()
 RESULT_HEADERS = [
     "序号",
     "类型",

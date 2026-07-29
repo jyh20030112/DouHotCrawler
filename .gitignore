@@ -13,5 +13,10 @@ result
 
 cookie.config
 
+# Local runtime configuration (may contain private service addresses)
+.env
+.env.*
+!.env.example
+
 uv.lock
 .python-version

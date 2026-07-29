@@ -42,6 +42,15 @@ When re-crawling the same keyword, existing videos are automatically skipped —
 
 ## Extracting Transcripts
 
+Before using transcript extraction, configure the private extraction service on the machine where the app runs:
+
+```bash
+# From the project directory (or the desktop application's launch directory)
+cp .env.example .env
+```
+
+Then edit `.env` and set `EXTRACT_API_URL` to your own service endpoint. `.env` is excluded from Git and must never be committed. A pre-set system environment variable takes precedence over the value in `.env`.
+
 1. Complete at least one crawl to generate a result Excel.
 2. Open the **"口播提取"** (Transcript Extraction) tab.
 3. Optionally specify sheet names, a processing limit, or a request interval.
