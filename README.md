@@ -6,27 +6,35 @@ No Python, uv, or other developer tools required — just download and run.
 
 ## System Requirements
 
-- **OS**: Windows 10 or later, x86_64 (Intel / AMD)
-- **Browser**: **Google Chrome** or **Microsoft Edge** must be installed
+- **Browser**: **Google Chrome** or **Microsoft Edge** must be installed. Chromium can be downloaded from within the app if neither is available.
 
-> The desktop bundle currently targets **Windows x86_64 only**. If Chrome or Edge is not detected, the app will prompt you to download Chromium as a fallback. For macOS / Linux, see [Running from Source](#running-from-source).
+Choose the package that matches both your operating system and CPU:
+
+| Package | Use it on |
+| --- | --- |
+| `DouHotCrawler-windows-x86_64.zip` | Windows 10 or later on Intel / AMD (x86_64) CPUs |
+| `DouHotCrawler-macos-arm64.zip` | Apple Silicon Macs (M1 / M2 / M3 / M4) |
+| `DouHotCrawler-Linux-x86_64.zip` | x86_64 Linux desktop systems; built on Ubuntu 24.04 |
+
+- Windows on ARM and Intel-based Macs are not currently packaged.
 
 ## Download
 
-Go to the **Actions** tab on GitHub, open a successful "Package desktop application" workflow run, and download the `DouHotCrawler-windows-x86_64` artifact.
+For a tagged version, download the matching zip from the repository's **Releases** page. Builds from an in-progress change are available as artifacts in a successful **Package desktop application** GitHub Actions run.
 
-| Artifact | Platform |
-|----------|----------|
-| `DouHotCrawler-windows-x86_64` | Windows 10+ (Intel / AMD) |
+## Install and Launch
 
-## Quick Start
+1. Extract the downloaded zip; keep all extracted files together.
+2. Start the application for your platform:
 
-1. Extract the downloaded zip file.
-2. Keep the entire `DouHotCrawler` folder intact — do not move the `.exe` out of it.
-3. Launch `DouHotCrawler.exe`. The app will detect your system Chrome or Edge automatically.
-4. If no system browser is found, click **"Download Browser"** in the "Browser Setup" card.
-5. Once the browser is ready, click the status button in the **"Crawler Cookie"** card to open the Douhot login page. Scan the QR code, then click **"Done, Save Login"**.
-6. (Optional) For transcript extraction, paste your full `www.douyin.com` cookie into the **"Transcript Cookie"** tab and save.
+   | Platform | Launch command / action |
+   | --- | --- |
+   | Windows | Double-click `DouHotCrawler/DouHotCrawler.exe`. Do not move the `.exe` out of its folder. |
+   | macOS (Apple Silicon) | Double-click `DouHotCrawler.app`. If macOS blocks an unsigned app, Control-click it, choose **Open**, then confirm. |
+   | Linux x86_64 | Run `chmod +x DouHotCrawler/DouHotCrawler` once, then run `./DouHotCrawler/DouHotCrawler` from the extracted directory. |
+3. The app detects Chrome or Edge automatically. If neither is found, click **"Download Browser"** in the Browser Setup card.
+4. In the **Crawler Cookie** card, open the Douhot login page, scan the QR code, and click **"Done, Save Login"**.
+5. (Optional) For transcript extraction, paste your full `www.douyin.com` cookie into the **Transcript Cookie** tab and save.
 
 After the first run, subsequent launches typically won't need another browser download or re-login.
 
@@ -42,14 +50,13 @@ When re-crawling the same keyword, existing videos are automatically skipped —
 
 ## Extracting Transcripts
 
-Before using transcript extraction, configure the private extraction service on the machine where the app runs:
+Before using transcript extraction, create a local `.env` file containing your private extraction-service endpoint:
 
 ```bash
-# From the project directory (or the desktop application's launch directory)
-cp .env.example .env
+EXTRACT_API_URL=http://your-api-host:28600/api/v1/videos/extract
 ```
 
-Then edit `.env` and set `EXTRACT_API_URL` to your own service endpoint. `.env` is excluded from Git and must never be committed. A pre-set system environment variable takes precedence over the value in `.env`.
+For the desktop package, place `.env` beside `DouHotCrawler.exe` / `DouHotCrawler` on Windows or Linux, or beside `DouHotCrawler.app` on macOS. For a source checkout, copy `.env.example` to `.env` in the project directory. `.env` is excluded from Git and must never be committed. A pre-set system environment variable takes precedence over `.env`.
 
 1. Complete at least one crawl to generate a result Excel.
 2. Open the **"口播提取"** (Transcript Extraction) tab.
@@ -80,9 +87,9 @@ Confirm the "Browser Setup" card shows a ready status, and that the "Crawler Coo
 
 Re-copy your full cookie from `www.douyin.com` and save it again. Cookies may expire due to logout, session expiry, or account changes.
 
-### Windows says "unknown publisher"?
+### Windows or macOS blocks the app?
 
-This is a standard warning for unsigned applications. Only proceed if you downloaded the artifact from a trusted source (your own GitHub Actions).
+The packages are not code-signed. Only continue when you downloaded the zip from this repository's Release or Actions artifact. On macOS, Control-click the app, choose **Open**, and then confirm.
 
 ## Privacy & Security
 

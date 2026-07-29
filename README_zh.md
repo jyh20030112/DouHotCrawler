@@ -6,18 +6,32 @@ DouHotCrawler 用于按关键词采集 Douhot 热榜视频，并将结果保存�
 
 ## 系统要求
 
-- **操作系统**：Windows 10 及以上，x86_64 架构（Intel / AMD 处理器）
 - **浏览器**：系统需安装 **Google Chrome** 或 **Microsoft Edge**
 
-> 桌面版目前仅支持 Windows x86_64。如果你的电脑未安装 Chrome 或 Edge，程序会自动提示下载 Chromium。macOS / Linux 用户请参考"从源码运行"章节。
+请选择与操作系统和 CPU 架构对应的安装包：
+
+| 安装包 | 适用设备 |
+| --- | --- |
+| `DouHotCrawler-windows-x86_64.zip` | Windows 10 及以上，Intel / AMD x86_64 处理器 |
+| `DouHotCrawler-macos-arm64.zip` | Apple Silicon Mac（M1 / M2 / M3 / M4） |
+| `DouHotCrawler-Linux-x86_64.zip` | x86_64 Linux 桌面系统；构建环境为 Ubuntu 24.04 |
+
+- 暂未提供 Windows ARM 和 Intel Mac 安装包。
+- 未检测到 Chrome 或 Edge 时，可在程序内下载 Chromium。
 
 ## 下载与安装
 
-在 GitHub 的 **Actions** 页面打开一次成功的 "Package desktop application" 工作流，下载 `DouHotCrawler-windows-x86_64` 构建产物。
+正式版本请在仓库的 **Releases** 页面下载对应 zip 包；测试中的构建可在 GitHub **Actions** 的成功 "Package desktop application" 工作流中下载。
 
 1. 解压下载的 zip 文件。
-2. 保留整个 `DouHotCrawler` 文件夹，不要只移动其中的主程序。
-3. 双击 `DouHotCrawler.exe` 启动程序。
+2. 保留解压后的全部文件，不要单独移动主程序。
+3. 按系统启动：
+
+   | 系统 | 启动方式 |
+   | --- | --- |
+   | Windows | 双击 `DouHotCrawler/DouHotCrawler.exe`。不要将 `.exe` 移出该文件夹。 |
+   | macOS（Apple Silicon） | 双击 `DouHotCrawler.app`。若系统阻止打开未签名应用，请按住 Control 点击应用，选择“打开”并确认。 |
+   | Linux x86_64 | 在解压目录执行一次 `chmod +x DouHotCrawler/DouHotCrawler`，随后执行 `./DouHotCrawler/DouHotCrawler`。 |
 
 ## 首次使用
 
@@ -42,6 +56,14 @@ DouHotCrawler 用于按关键词采集 Douhot 热榜视频，并将结果保存�
 重复采集同一关键词时，已存在的视频会自动跳过，适合持续补充数据。
 
 ## 提取视频口播
+
+开始前需配置私有口播提取服务。在本地创建 `.env` 文件并填写：
+
+```bash
+EXTRACT_API_URL=http://your-api-host:28600/api/v1/videos/extract
+```
+
+Windows / Linux 桌面版将 `.env` 放在主程序旁；macOS 将 `.env` 放在 `DouHotCrawler.app` 旁。源码运行时可将 `.env.example` 复制为项目根目录下的 `.env`。`.env` 不会被 Git 跟踪，严禁提交或分享；已设置的系统环境变量优先于 `.env`。
 
 1. 先完成至少一次热榜采集，确保已有结果 Excel。
 2. 打开"口播提取"页。
@@ -74,9 +96,9 @@ DouHotCrawler 用于按关键词采集 Douhot 热榜视频，并将结果保存�
 
 请重新从抖音网页复制完整 Cookie 并保存。Cookie 可能因退出登录、过期或账号状态变化而失效。
 
-### Windows 提示未知开发者
+### Windows 或 macOS 阻止打开应用
 
-这是未签名应用的系统安全提示。请确认下载来源正确后，按系统提示继续打开；不要从不可信来源下载程序。
+这是未签名应用的系统安全提示。仅在确认 zip 来自本仓库 Release 或 Actions 构建产物后继续。macOS 可按住 Control 点击应用，选择“打开”后确认；不要从不可信来源下载程序。
 
 ## 隐私与账号安全
 
