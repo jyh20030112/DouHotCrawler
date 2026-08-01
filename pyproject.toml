@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "crawl4ai>=0.9.2",
+    "mcp>=1.12,<2",
     "openpyxl>=3.1.5",
     "pyside6>=6.11.1",
     "pyside6-fluent-widgets>=1.11.2",
@@ -16,6 +17,7 @@ douhot-crawl = "douhot_crawler.__main__:main"
 douhot-analyze = "douhot_crawler.analyzer:main"
 douhot-gui = "douhot_crawler.gui:main"
 douhot-login = "douhot_crawler.login_cli:main"
+douhot-mcp = "douhot_crawler.mcp_server:main"
 
 [build-system]
 requires = ["hatchling"]
