@@ -12,6 +12,7 @@ wheels/
 result
 
 cookie.config
+cookie.config.example
 
 # Local runtime configuration (may contain private service addresses)
 .env

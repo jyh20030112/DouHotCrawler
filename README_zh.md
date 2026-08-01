@@ -4,6 +4,18 @@ DouHotCrawler 用于按关键词采集 Douhot 热榜视频，并将结果保存�
 
 使用桌面版无需安装 Python、uv 或其他开发工具。
 
+## MCP 服务
+
+项目同时提供独立的 Streamable HTTP MCP 服务。CLI、桌面 GUI 和 MCP 共用同一套爬取、登录与口播提取实现。
+
+```bash
+cp .env.example .env
+# 设置 DOUHOT_MCP_TOKEN、DOUHOT_DOWNLOAD_SECRET 和 EXTRACT_API_URL
+uv run douhot-mcp
+```
+
+默认地址为 `http://127.0.0.1:8765/mcp`。MCP 暴露健康检查、网页扫码登录、异步爬取、批量分析、任务查询/取消、候选视频列表和单条口播提取 tools。所有 Profile、Cookie、任务和 Excel 均按受信任 `user_id` 的哈希隔离；Excel 和二维码下载地址带 15 分钟签名。
+
 ## 系统要求
 
 - **浏览器**：系统需安装 **Google Chrome** 或 **Microsoft Edge**

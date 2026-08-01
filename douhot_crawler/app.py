@@ -54,19 +54,22 @@ async def run(
     options: RunOptions,
     *,
     stop_requested: Callable[[], bool] | None = None,
-) -> None:
+    profile_path=None,
+    excel_path=None,
+) -> dict:
     """执行一次完整的关键词搜索、采集和结果入库。"""
 
     if options.detail_delay < 0:
         raise ValueError("--detail-delay 不能小于 0")
 
-    if not PROFILE_PATH.exists():
+    profile_path = (profile_path or PROFILE_PATH).resolve()
+    if not profile_path.exists():
         raise FileNotFoundError(
-            f"没有找到 douhot Profile：{PROFILE_PATH}\n"
+            f"没有找到 douhot Profile：{profile_path}\n"
             "请先运行 `uv run crwl profiles`，并确认已经按 q 保存。"
         )
 
-    excel_path = RESULT_EXCEL_PATH.resolve()
+    excel_path = (excel_path or RESULT_EXCEL_PATH).resolve()
     known_video_identities = existing_video_identities(excel_path, options.keyword)
     skipped_in_list = 0
     added_count = 0
@@ -105,7 +108,7 @@ async def run(
         headless=options.headless,
         use_managed_browser=True,
         use_persistent_context=True,
-        user_data_dir=str(PROFILE_PATH),
+        user_data_dir=str(profile_path),
         viewport_width=1440,
         viewport_height=1000,
         verbose=True,
@@ -180,6 +183,12 @@ async def run(
             f"本次新增 {added_count} 条，"
             f"跳过已有视频 {skipped_in_list + skipped_in_storage} 条"
         )
+        return {
+            "excel_path": str(excel_path),
+            "added_count": added_count,
+            "skipped_count": skipped_in_list + skipped_in_storage,
+            "sheet": excel_sheet_name(options.keyword),
+        }
     finally:
         if stop_task:
             stop_task.cancel()
