@@ -65,7 +65,11 @@ def _login_run_config() -> CrawlerRunConfig:
     )
 
 
-async def run_login(*, stop_requested: Callable[[], bool] | None = None) -> None:
+async def run_login(
+    *,
+    stop_requested: Callable[[], bool] | None = None,
+    profile_path=None,
+) -> None:
     """使用爬虫同一持久化 Profile 打开 Douhot 首页并等待扫码。"""
 
     stop_event = asyncio.Event()
@@ -82,12 +86,13 @@ async def run_login(*, stop_requested: Callable[[], bool] | None = None) -> None
     except (NotImplementedError, RuntimeError):
         pass
 
+    profile_path = (profile_path or PROFILE_PATH).resolve()
     browser_config = BrowserConfig(
         browser_type="chromium",
         headless=False,
         use_managed_browser=True,
         use_persistent_context=True,
-        user_data_dir=str(PROFILE_PATH),
+        user_data_dir=str(profile_path),
         viewport_width=1440,
         viewport_height=1000,
         verbose=True,
