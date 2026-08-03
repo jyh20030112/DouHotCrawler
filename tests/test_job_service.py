@@ -32,6 +32,33 @@ def test_user_key_is_stable_and_rejects_unsafe_values():
         user_key("bad\nuser")
 
 
+def test_paths_copies_configured_cookie_and_overwrites_existing_user_cookie(tmp_path):
+    cookie_source = tmp_path / "cookie.config"
+    cookie_source.write_text("initial-cookie", encoding="utf-8")
+    service_settings = settings(tmp_path)
+    service_settings = ServiceSettings(
+        data_root=service_settings.data_root,
+        public_url=service_settings.public_url,
+        download_secret=service_settings.download_secret,
+        login_timeout_seconds=service_settings.login_timeout_seconds,
+        cookie_source=cookie_source,
+    )
+    manager = JobManager(service_settings)
+
+    paths = manager.paths("alice")
+
+    assert paths.cookie.read_text(encoding="utf-8") == "initial-cookie"
+    assert paths.cookie.stat().st_mode & 0o777 == 0o600
+
+    paths.cookie.write_text("user-cookie", encoding="utf-8")
+    cookie_source.write_text("updated-template", encoding="utf-8")
+
+    refreshed_paths = manager.paths("alice")
+
+    assert refreshed_paths.cookie.read_text(encoding="utf-8") == "updated-template"
+    assert refreshed_paths.cookie.stat().st_mode & 0o777 == 0o600
+
+
 def test_store_isolates_jobs_and_recovers_interrupted_jobs(tmp_path):
     path = tmp_path / "jobs.sqlite3"
     store = JobStore(path)

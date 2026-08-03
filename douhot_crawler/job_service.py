@@ -6,6 +6,7 @@ import hmac
 import json
 import os
 import re
+import shutil
 import sqlite3
 import threading
 import time
@@ -62,10 +63,12 @@ class ServiceSettings:
     public_url: str
     download_secret: str
     login_timeout_seconds: int = 300
+    cookie_source: Path | None = None
 
     @classmethod
     def from_env(cls) -> ServiceSettings:
         default_root = RESULT_EXCEL_PATH.parent.parent
+        default_cookie_source = Path(__file__).resolve().parent.parent / "cookie.config"
         return cls(
             data_root=Path(os.environ.get("DOUHOT_DATA_ROOT", default_root))
             .expanduser()
@@ -79,6 +82,11 @@ class ServiceSettings:
             login_timeout_seconds=int(
                 os.environ.get("DOUHOT_LOGIN_TIMEOUT_SECONDS", "300")
             ),
+            cookie_source=Path(
+                os.environ.get("DOUHOT_COOKIE_SOURCE", default_cookie_source)
+            )
+            .expanduser()
+            .resolve(),
         )
 
 
@@ -264,6 +272,12 @@ class JobManager:
             jobs=root / "jobs",
         )
         paths.jobs.mkdir(parents=True, exist_ok=True)
+        if (
+            self.settings.cookie_source is not None
+            and self.settings.cookie_source.is_file()
+        ):
+            shutil.copyfile(self.settings.cookie_source, paths.cookie)
+            paths.cookie.chmod(0o600)
         return paths
 
     async def _start(
