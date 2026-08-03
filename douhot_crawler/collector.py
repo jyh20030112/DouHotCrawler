@@ -136,8 +136,13 @@ async def collect_all_video_details(
     detail_delay: float,
     persist_page: PagePersistor,
     stop_requested: StopRequested,
+    *,
+    max_results: int | None = None,
 ) -> tuple[int, int, bool]:
     """逐页采集并落盘未出现过的视频，避免跨页累积记录。"""
+
+    if max_results is not None and max_results < 1:
+        raise ValueError("max_results 必须大于 0")
 
     collected_count = 0
     skipped_count = 0
@@ -178,6 +183,12 @@ async def collect_all_video_details(
                 )
                 page_records.append(record)
                 known_identities.add(identity)
+                if (
+                    max_results is not None
+                    and collected_count + len(page_records) >= max_results
+                ):
+                    print(f"已达到指定获取条数 {max_results}，准备写入结果")
+                    break
                 wait_seconds = (
                     0.0
                     if detail_delay == 0
@@ -206,6 +217,9 @@ async def collect_all_video_details(
         if stop_requested():
             print("安全停止请求已生效：当前页已写入，停止后续翻页")
             return collected_count, skipped_count, True
+        if max_results is not None and collected_count >= max_results:
+            print(f"已获取指定的 {max_results} 条新视频，停止后续翻页")
+            return collected_count, skipped_count, False
 
         next_button = page.locator(
             ".arco-pagination-item-next, .arco-pagination-next"

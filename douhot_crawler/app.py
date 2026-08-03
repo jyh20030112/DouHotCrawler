@@ -56,11 +56,14 @@ async def run(
     stop_requested: Callable[[], bool] | None = None,
     profile_path=None,
     excel_path=None,
+    max_results: int | None = None,
 ) -> dict:
     """执行一次完整的关键词搜索、采集和结果入库。"""
 
     if options.detail_delay < 0:
         raise ValueError("--detail-delay 不能小于 0")
+    if max_results is not None and max_results < 1:
+        raise ValueError("max_results 必须大于 0")
 
     profile_path = (profile_path or PROFILE_PATH).resolve()
     if not profile_path.exists():
@@ -164,6 +167,7 @@ async def run(
             options.detail_delay,
             persist_page,
             should_stop,
+            max_results=max_results,
         )
         skipped_in_list += skipped_count
         if stopped:

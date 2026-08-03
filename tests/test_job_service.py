@@ -190,6 +190,133 @@ async def test_successful_empty_crawl_still_creates_excel(tmp_path, monkeypatch)
     assert Path(result["result_path"]).is_file()
 
 
+async def test_start_crawl_passes_result_limit_to_crawler(tmp_path, monkeypatch):
+    manager = JobManager(settings(tmp_path))
+    captured = {}
+
+    async def empty_crawl(_options, **kwargs):
+        captured.update(kwargs)
+        return {"added_count": 0, "skipped_count": 0, "sheet": "AI+创业"}
+
+    monkeypatch.setattr(job_service, "chromium_status", lambda: (True, "ready"))
+    monkeypatch.setattr(job_service, "run_crawl", empty_crawl)
+    started = await manager.start_crawl(
+        "alice",
+        keyword="AI+创业",
+        result_type="低粉爆款",
+        time_range="近7天",
+        input_timeout=30,
+        detail_delay=1,
+        limit=7,
+    )
+
+    for _ in range(20):
+        result = manager.describe("alice", started["id"])
+        if result["status"] in {"succeeded", "failed"}:
+            break
+        await asyncio.sleep(0.01)
+
+    assert result["status"] == "succeeded", result["error"]
+    assert result["params"]["limit"] == 7
+    assert captured["max_results"] == 7
+
+
+async def test_start_crawl_rejects_non_positive_result_limit(tmp_path):
+    manager = JobManager(settings(tmp_path))
+
+    with pytest.raises(ValueError, match="limit"):
+        await manager.start_crawl(
+            "alice",
+            keyword="AI+创业",
+            result_type="低粉爆款",
+            time_range="近7天",
+            input_timeout=30,
+            detail_delay=1,
+            limit=0,
+        )
+
+
+async def test_shutdown_cancels_and_waits_for_active_jobs(tmp_path):
+    manager = JobManager(settings(tmp_path))
+    runner_started = asyncio.Event()
+
+    async def runner(_job_id, _owner, cancellation):
+        runner_started.set()
+        await cancellation.wait()
+        return {}
+
+    job = await manager._start(
+        user_id="alice",
+        kind="crawl",
+        params={},
+        runner=runner,
+    )
+    await runner_started.wait()
+
+    await manager.shutdown()
+
+    assert manager.describe("alice", job["id"])["status"] == "cancelled"
+    assert manager._tasks == {}
+
+
+async def test_wait_for_terminal_notifies_until_background_job_completes(tmp_path):
+    manager = JobManager(settings(tmp_path))
+    release = asyncio.Event()
+    statuses = []
+
+    async def runner(_job_id, _owner, _cancellation):
+        await release.wait()
+        return {"count": 3}
+
+    job = await manager._start(
+        user_id="alice",
+        kind="crawl",
+        params={},
+        runner=runner,
+    )
+
+    async def on_status(current):
+        statuses.append(current["status"])
+        release.set()
+
+    result = await manager.wait_for_terminal(
+        "alice",
+        job["id"],
+        timeout=1,
+        poll_interval=0.01,
+        on_status=on_status,
+    )
+
+    assert statuses == ["queued", "succeeded"]
+    assert result["status"] == "succeeded"
+    assert result["result"] == {"count": 3}
+
+
+async def test_wait_for_terminal_timeout_does_not_cancel_background_job(tmp_path):
+    manager = JobManager(settings(tmp_path))
+    release = asyncio.Event()
+
+    async def runner(_job_id, _owner, _cancellation):
+        await release.wait()
+        return {}
+
+    job = await manager._start(
+        user_id="alice",
+        kind="crawl",
+        params={},
+        runner=runner,
+    )
+
+    with pytest.raises(TimeoutError, match="仍在后台运行"):
+        await manager.wait_for_terminal(
+            "alice", job["id"], timeout=0.01, poll_interval=0.005
+        )
+
+    assert manager.describe("alice", job["id"])["status"] == "running"
+    release.set()
+    await manager.wait_for_terminal("alice", job["id"], timeout=1)
+
+
 async def test_capture_qr_waits_for_square_image_instead_of_screenshotting_page(
     tmp_path,
 ):
