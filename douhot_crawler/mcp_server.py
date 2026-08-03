@@ -4,7 +4,7 @@ import os
 from typing import Any
 
 import uvicorn
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse
 
@@ -16,7 +16,7 @@ mcp = FastMCP(
     "DouHotCrawler",
     instructions="按用户隔离执行热点宝扫码、爬取、口播提取和 Excel 导出。",
     stateless_http=True,
-    json_response=True,
+    json_response=False,
     streamable_http_path="/mcp",
 )
 
@@ -53,15 +53,17 @@ async def douhot_crawl_start(
     keyword: str,
     result_type: str = DEFAULT_RESULT_TYPE,
     time_range: str = DEFAULT_TIME_RANGE,
+    limit: int = 10,
     input_timeout: float = 30.0,
     detail_delay: float = DEFAULT_DETAIL_DELAY,
 ) -> dict[str, Any]:
-    """按关键词启动热点视频爬取任务，完成后生成独立 Excel。"""
+    """按关键词爬取指定条数的热点视频，默认获取 10 条并生成独立 Excel。"""
     return await manager.start_crawl(
         user_id,
         keyword=keyword,
         result_type=result_type,
         time_range=time_range,
+        limit=limit,
         input_timeout=input_timeout,
         detail_delay=detail_delay,
     )
@@ -87,6 +89,36 @@ async def douhot_analyze_start(
 def douhot_job_status(user_id: str, job_id: str | None = None) -> dict[str, Any]:
     """查询当前用户的爬取或分析任务状态。"""
     return manager.describe(user_id, job_id, kinds=("crawl", "analyze"))
+
+
+@mcp.tool()
+async def douhot_job_wait(
+    user_id: str,
+    ctx: Context,
+    job_id: str | None = None,
+    timeout_seconds: float = 900.0,
+) -> dict[str, Any]:
+    """等待爬取或分析任务完成，并向 MCP 客户端主动报告任务状态。"""
+
+    elapsed = 0.0
+
+    async def report_status(job: dict[str, Any]) -> None:
+        nonlocal elapsed
+        await ctx.report_progress(
+            min(elapsed, timeout_seconds),
+            total=timeout_seconds,
+            message=f"DouHot 任务状态：{job['status']}",
+        )
+        elapsed += 1.0
+
+    return await manager.wait_for_terminal(
+        user_id,
+        job_id,
+        kinds=("crawl", "analyze"),
+        timeout=timeout_seconds,
+        poll_interval=1.0,
+        on_status=report_status,
+    )
 
 
 @mcp.tool()
@@ -150,11 +182,39 @@ class BearerAuthApp:
         await self.app(scope, receive, send)
 
 
+class ManagedLifespanApp:
+    def __init__(self, app, job_manager: JobManager) -> None:
+        self.app = app
+        self.job_manager = job_manager
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "lifespan":
+            await self.app(scope, receive, send)
+            return
+
+        async def receive_with_shutdown():
+            message = await receive()
+            if message["type"] == "lifespan.shutdown":
+                self.job_manager.request_shutdown()
+            return message
+
+        async def send_after_jobs_stop(message):
+            if message["type"] in {
+                "lifespan.shutdown.complete",
+                "lifespan.shutdown.failed",
+            }:
+                await self.job_manager.shutdown()
+            await send(message)
+
+        await self.app(scope, receive_with_shutdown, send_after_jobs_stop)
+
+
 def create_app():
     token = os.environ.get("DOUHOT_MCP_TOKEN", "").strip()
     if not token:
         raise RuntimeError("必须配置 DOUHOT_MCP_TOKEN")
-    return BearerAuthApp(mcp.streamable_http_app(), token)
+    app = ManagedLifespanApp(mcp.streamable_http_app(), manager)
+    return BearerAuthApp(app, token)
 
 
 def main() -> None:

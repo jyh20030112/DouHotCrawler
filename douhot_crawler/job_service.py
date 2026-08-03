@@ -6,6 +6,7 @@ import hmac
 import json
 import os
 import re
+import shutil
 import sqlite3
 import threading
 import time
@@ -62,10 +63,12 @@ class ServiceSettings:
     public_url: str
     download_secret: str
     login_timeout_seconds: int = 300
+    cookie_source: Path | None = None
 
     @classmethod
     def from_env(cls) -> ServiceSettings:
         default_root = RESULT_EXCEL_PATH.parent.parent
+        default_cookie_source = Path(__file__).resolve().parent.parent / "cookie.config"
         return cls(
             data_root=Path(os.environ.get("DOUHOT_DATA_ROOT", default_root))
             .expanduser()
@@ -79,6 +82,11 @@ class ServiceSettings:
             login_timeout_seconds=int(
                 os.environ.get("DOUHOT_LOGIN_TIMEOUT_SECONDS", "300")
             ),
+            cookie_source=Path(
+                os.environ.get("DOUHOT_COOKIE_SOURCE", default_cookie_source)
+            )
+            .expanduser()
+            .resolve(),
         )
 
 
@@ -245,6 +253,7 @@ class JobStore:
 
 
 Runner = Callable[[str, str, asyncio.Event], Awaitable[dict[str, Any]]]
+StatusCallback = Callable[[dict[str, Any]], Awaitable[None]]
 
 
 class JobManager:
@@ -255,6 +264,64 @@ class JobManager:
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._cancellations: dict[str, asyncio.Event] = {}
 
+    def request_shutdown(self) -> None:
+        """请求所有后台任务在当前记录落盘后停止。"""
+
+        for cancellation in tuple(self._cancellations.values()):
+            cancellation.set()
+
+    async def shutdown(self, *, timeout: float = 30.0) -> None:
+        """停止并等待后台任务，超时后再取消仍未结束的任务。"""
+
+        self.request_shutdown()
+        tasks = tuple(self._tasks.values())
+        if not tasks:
+            return
+        _, pending = await asyncio.wait(tasks, timeout=timeout)
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    async def wait_for_terminal(
+        self,
+        user_id: str,
+        job_id: str | None = None,
+        *,
+        kinds: tuple[str, ...] = ("crawl", "analyze"),
+        timeout: float = 900.0,
+        poll_interval: float = 1.0,
+        on_status: StatusCallback | None = None,
+    ) -> dict[str, Any]:
+        """等待后台任务进入终态，并允许 MCP 请求期间持续报告进度。"""
+
+        if timeout <= 0:
+            raise ValueError("timeout 必须大于 0")
+        if poll_interval <= 0:
+            raise ValueError("poll_interval 必须大于 0")
+
+        job = self.describe(user_id, job_id, kinds=kinds)
+        deadline = asyncio.get_running_loop().time() + timeout
+        while job["status"] in ACTIVE_STATUSES:
+            if on_status is not None:
+                await on_status(job)
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                raise TimeoutError(
+                    f"等待任务 {job['id']} 完成超过 {timeout:g} 秒；任务仍在后台运行"
+                )
+            task = self._tasks.get(job["id"])
+            interval = min(poll_interval, remaining)
+            if task is None:
+                await asyncio.sleep(interval)
+            else:
+                await asyncio.wait({task}, timeout=interval)
+            job = self.describe(user_id, job["id"], kinds=kinds)
+
+        if on_status is not None:
+            await on_status(job)
+        return job
+
     def paths(self, user_id: str) -> UserPaths:
         root = self.settings.data_root / "users" / user_key(user_id)
         paths = UserPaths(
@@ -264,6 +331,12 @@ class JobManager:
             jobs=root / "jobs",
         )
         paths.jobs.mkdir(parents=True, exist_ok=True)
+        if (
+            self.settings.cookie_source is not None
+            and self.settings.cookie_source.is_file()
+        ):
+            shutil.copyfile(self.settings.cookie_source, paths.cookie)
+            paths.cookie.chmod(0o600)
         return paths
 
     async def _start(
@@ -314,6 +387,7 @@ class JobManager:
         time_range: str,
         input_timeout: float,
         detail_delay: float,
+        limit: int = 10,
     ) -> dict[str, Any]:
         if not keyword.strip():
             raise ValueError("keyword 不能为空")
@@ -323,6 +397,8 @@ class JobManager:
             )
         if time_range not in TIME_RANGE_CHOICES:
             raise ValueError(f"time_range 必须是：{', '.join(TIME_RANGE_CHOICES)}")
+        if limit < 1:
+            raise ValueError("limit 必须大于 0")
         browser_ok, browser_detail = chromium_status()
         if not browser_ok:
             raise ValueError(browser_detail)
@@ -346,6 +422,7 @@ class JobManager:
                 stop_requested=cancellation.is_set,
                 profile_path=paths.profile,
                 excel_path=output,
+                max_results=limit,
             )
             if not output.is_file():
                 await asyncio.to_thread(
@@ -372,6 +449,7 @@ class JobManager:
                 "keyword": keyword,
                 "result_type": result_type,
                 "time_range": time_range,
+                "limit": limit,
             },
             runner=runner,
         )
