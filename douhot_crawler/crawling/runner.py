@@ -32,6 +32,12 @@ from .page_actions import (
 )
 
 
+def should_watch_terminal(browser_cookie: str | None, stream) -> bool:
+    """Only interactive Profile/CLI runs accept the terminal ``q`` command."""
+
+    return not browser_cookie and stream is not None and stream.isatty()
+
+
 async def watch_stop_command(stop_event: asyncio.Event) -> None:
     """监听终端的 q 指令，在当前记录完成后安全停止。"""
 
@@ -135,7 +141,9 @@ async def run(
     )
     crawler = AsyncWebCrawler(config=browser_config)
 
-    if sys.stdin is not None and sys.stdin.isatty():
+    # API 模式使用内存 Cookie，并通过 pause 接口协作式停止。Uvicorn 也可能
+    # 挂在 TTY 上，但不应为流水线的每个关键词重复启动 stdin 监听器。
+    if should_watch_terminal(browser_cookie, sys.stdin):
         print("输入 q 并按回车，可在当前记录完成后写入 Excel 并安全退出")
         stop_task = asyncio.create_task(watch_stop_command(stop_event))
 
