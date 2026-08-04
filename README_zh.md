@@ -135,6 +135,7 @@ uv run douhot-api
 | `POST` | `/api/v1/tasks/crawl` | 创建单关键词爬取任务，默认最多 500 条 |
 | `POST` | `/api/v1/tasks/analyze` | 为已成功的爬取任务补充口播 |
 | `POST` | `/api/v1/tasks/pipeline` | 顺序执行关键词获取、爬取、口播和发送 |
+| `POST` | `/api/v1/tasks/upload` | 将指定任务现有 Excel 的全部合格数据分批发送 |
 | `POST` | `/api/v1/tasks/{task_id}/pause` | 在当前安全检查点暂停 |
 | `POST` | `/api/v1/tasks/{task_id}/resume` | 恢复 paused 任务 |
 | `GET` | `/api/v1/tasks/{task_id}` | 查询状态、进度、告警与结果文件信息 |

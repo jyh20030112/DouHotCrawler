@@ -12,7 +12,12 @@ from douhot_crawler.api.app import create_app
 from douhot_crawler.api.clients import ExternalApiClient
 from douhot_crawler.api.config import ApiSettings
 from douhot_crawler.api import daily
-from douhot_crawler.api.models import PipelineTaskRequest, TaskKind, TaskStatus
+from douhot_crawler.api.models import (
+    PipelineTaskRequest,
+    TaskKind,
+    TaskStatus,
+    UploadTaskRequest,
+)
 from douhot_crawler.api.service import ApiTaskService, parse_follower_count
 from douhot_crawler.api.store import ApiTaskStore
 from douhot_crawler.api.errors import ExternalServiceError, TaskPaused
@@ -267,6 +272,38 @@ async def test_failed_upload_batch_is_resumable(tmp_path: Path, monkeypatch) -> 
 
 
 @pytest.mark.asyncio
+async def test_standalone_upload_task_sends_existing_workbook(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "douhot_crawler.api.service.chromium_status", lambda: (True, "test browser")
+    )
+    fake_client = FakeExternalClient()
+    service = ApiTaskService(settings(tmp_path), client=fake_client)
+    source = service.store.create(TaskKind.CRAWL, {"keyword": "关键词"})
+    workbook = service._workbook(source["task_id"])
+    workbook.parent.mkdir(parents=True, exist_ok=True)
+    create_upload_workbook(workbook, rows=21)
+    service.store.finish(
+        source["task_id"],
+        result={"artifact": service._artifact(workbook)},
+        artifact_path=workbook,
+    )
+
+    upload = service.create_upload(
+        UploadTaskRequest(source_task_id=source["task_id"], sheets=None)
+    )
+    await service._execute(service.store.claim_next())
+
+    completed = service.status(upload["task_id"])
+    assert completed["status"] == TaskStatus.SUCCEEDED
+    assert completed["result"]["sheets"] == ["关键词"]
+    assert completed["result"]["eligible_rows"] == 21
+    assert completed["result"]["sent_rows"] == 21
+    assert [len(batch) for batch in fake_client.uploads] == [20, 1]
+
+
+@pytest.mark.asyncio
 async def test_pipeline_runs_keywords_sequentially_and_uploads_batches(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -370,6 +407,9 @@ class FakeRouteService:
     def create_pipeline(self, request):
         return {"task_id": "id", "status": "queued"}, True
 
+    def create_upload(self, request):
+        return {"task_id": "upload-id", "status": "queued"}
+
 
 def test_api_routes_and_validation_envelope(tmp_path: Path) -> None:
     app = create_app(settings(tmp_path), service=FakeRouteService())
@@ -385,6 +425,15 @@ def test_api_routes_and_validation_envelope(tmp_path: Path) -> None:
         )
         assert invalid.status_code == 422
         assert invalid.json()["error"]["code"] == "VALIDATION_ERROR"
+        uploaded = client.post(
+            "/api/v1/tasks/upload",
+            json={
+                "source_task_id": "42118d44-6334-4a0c-a9a5-9a5096ab2962",
+                "sheets": None,
+            },
+        )
+        assert uploaded.status_code == 202
+        assert uploaded.json()["task_id"] == "upload-id"
 
 
 def test_openapi_documents_workflow_examples_and_errors(tmp_path: Path) -> None:
@@ -407,6 +456,8 @@ def test_openapi_documents_workflow_examples_and_errors(tmp_path: Path) -> None:
     assert "最多采集条数" in request_schema["properties"]["limit"]["description"]
     task_schema = schema["components"]["schemas"]["TaskResponse"]
     assert task_schema["examples"][0]["progress"]["current"] == 3
+    upload = schema["paths"]["/api/v1/tasks/upload"]["post"]
+    assert upload["summary"] == "上传现有 Excel 的全部合格数据"
 
 
 def test_daily_launcher_submits_once_and_prints_task_id(monkeypatch, capsys) -> None:

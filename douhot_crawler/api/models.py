@@ -18,6 +18,7 @@ from douhot_crawler.core.config import (
 class TaskKind(StrEnum):
     CRAWL = "crawl"
     ANALYZE = "analyze"
+    UPLOAD = "upload"
     PIPELINE = "pipeline"
 
 
@@ -254,6 +255,50 @@ class PipelineTaskRequest(BaseModel):
         return self
 
 
+class UploadTaskRequest(BaseModel):
+    """把一个任务现有 Excel 中的合格记录发送到榜单数据库。"""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "source_task_id": "42118d44-6334-4a0c-a9a5-9a5096ab2962",
+                    "sheets": None,
+                },
+                {
+                    "source_task_id": "42118d44-6334-4a0c-a9a5-9a5096ab2962",
+                    "sheets": ["大健康", "美容"],
+                },
+            ]
+        },
+    )
+
+    source_task_id: str = Field(
+        min_length=36,
+        max_length=36,
+        description=(
+            "包含目标 Excel 的 crawl、analyze 或 pipeline 任务 UUID；也允许使用已有文件的"
+            " paused/failed 任务。"
+        ),
+    )
+    sheets: list[str] | None = Field(
+        default=None,
+        description="只上传这些 Sheet；null 时上传 Excel 中全部 Sheet。",
+        examples=[["大健康"]],
+    )
+
+    @field_validator("sheets")
+    @classmethod
+    def clean_sheets(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        cleaned = list(dict.fromkeys(item.strip() for item in value if item.strip()))
+        if not cleaned:
+            raise ValueError("sheets 不能为空列表")
+        return cleaned
+
+
 class KeywordResponse(BaseModel):
     key_word: list[str] = Field(
         description="去空、去重并保持外部热点接口原顺序的关键词列表。",
@@ -327,7 +372,9 @@ class TaskResponse(BaseModel):
     )
 
     task_id: str = Field(description="任务 UUID。")
-    kind: TaskKind = Field(description="任务类型：crawl、analyze 或 pipeline。")
+    kind: TaskKind = Field(
+        description="任务类型：crawl、analyze、upload 或 pipeline。"
+    )
     status: TaskStatus = Field(description="当前任务状态。")
     phase: str | None = Field(default=None, description="当前执行阶段。")
     params: dict[str, Any] = Field(description="创建任务时经过校验的请求参数。")

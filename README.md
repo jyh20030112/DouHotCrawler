@@ -128,7 +128,7 @@ uv sync
 uv run douhot-api
 ```
 
-The unauthenticated service defaults to `127.0.0.1:8000` with exactly one Uvicorn worker. OpenAPI documentation is available at `/docs`. Its `/api/v1` routes provide health and keyword lookup plus crawl, transcript-analysis, pipeline, pause, resume, and task-status operations. Jobs use a persistent global FIFO queue. Pipeline jobs process keywords sequentially as crawl → transcript → upload, send eligible rows in batches of 20, and can resume from SQLite checkpoints. Cookies are fetched immediately before each relevant phase and are never persisted by the API.
+The unauthenticated service defaults to `127.0.0.1:8000` with exactly one Uvicorn worker. OpenAPI documentation is available at `/docs`. Its `/api/v1` routes provide health and keyword lookup plus crawl, transcript-analysis, standalone existing-Excel upload, pipeline, pause, resume, and task-status operations. Jobs use a persistent global FIFO queue. Pipeline jobs process keywords sequentially as crawl → transcript → upload, send eligible rows in batches of 20, and can resume from SQLite checkpoints. Cookies are fetched immediately before each relevant phase and are never persisted by the API.
 
 Run the daily launcher from cron at 03:00 Shanghai time; it submits a pipeline and exits immediately. An existing active or paused pipeline is reused.
 

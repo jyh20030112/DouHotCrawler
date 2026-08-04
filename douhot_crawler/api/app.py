@@ -20,6 +20,7 @@ from .models import (
     PipelineTaskRequest,
     TaskAcceptedResponse,
     TaskResponse,
+    UploadTaskRequest,
 )
 from .service import ApiTaskService
 
@@ -35,7 +36,7 @@ DouHotCrawler 的异步任务 API，接口前缀统一为 `/api/v1`。
 
 ### 执行与数据规则
 
-- 所有 crawl、analyze 和 pipeline 任务进入同一个持久化 FIFO 队列，严格串行执行。
+- 所有 crawl、analyze、upload 和 pipeline 任务进入同一个持久化 FIFO 队列，严格串行执行。
 - pipeline 按关键词依次执行 **爬取 → 口播提取 → 每 20 条发送**，不会并发处理关键词。
 - 单关键词默认最多 500 条；`keywords=null` 时从热点接口获取默认 30 个关键词。
 - Cookie 在每个阶段从外部配置接口读取，只保存在内存，不写入 SQLite、Excel 或日志。
@@ -229,6 +230,24 @@ def create_app(
             "status": task["status"],
             "created": created,
         }
+
+    @app.post(
+        "/api/v1/tasks/upload",
+        response_model=TaskAcceptedResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        tags=["任务创建"],
+        summary="上传现有 Excel 的全部合格数据",
+        description=(
+            "通过 source_task_id 找到 crawl、analyze 或 pipeline 任务对应的现有 Excel，默认遍历"
+            "全部 Sheet 并发送到榜单数据库。缺少视频名称、视频 URL、博主名称或视频口播的行"
+            "会跳过；其余记录每 20 条一批发送。发送进度写入 SQLite，上传失败时任务自动暂停，"
+            "调用 resume 后只重发当前上传任务中尚未成功的记录。"
+        ),
+        responses=ERROR_RESPONSES,
+    )
+    async def create_upload(request: UploadTaskRequest) -> dict[str, Any]:
+        task = task_service.create_upload(request)
+        return {"task_id": task["task_id"], "status": task["status"], "created": True}
 
     @app.post(
         "/api/v1/tasks/{task_id}/pause",

@@ -28,6 +28,7 @@ from .models import (
     PipelineTaskRequest,
     TaskKind,
     TaskStatus,
+    UploadTaskRequest,
 )
 from .store import ApiTaskStore
 
@@ -162,6 +163,43 @@ class ApiTaskService:
         self._wake.set()
         return task, True
 
+    def _source_workbook(self, source_task_id: str) -> Path:
+        source = self.store.get(source_task_id)
+        if source["status"] in {
+            TaskStatus.QUEUED,
+            TaskStatus.RUNNING,
+            TaskStatus.PAUSING,
+        }:
+            raise ApiError(
+                "SOURCE_TASK_BUSY",
+                "源任务仍在排队或写入 Excel，请等待其完成或暂停",
+                status_code=409,
+            )
+        kind = TaskKind(source["kind"])
+        if kind in {TaskKind.CRAWL, TaskKind.PIPELINE}:
+            owner_task_id = source_task_id
+        elif kind == TaskKind.ANALYZE:
+            owner_task_id = str(source["params"].get("crawl_task_id") or "")
+        else:
+            raise ApiError(
+                "INVALID_SOURCE_TASK",
+                "source_task_id 必须是 crawl、analyze 或 pipeline 任务",
+                status_code=400,
+            )
+        workbook = self._workbook(owner_task_id)
+        if not workbook.is_file():
+            raise ApiError("ARTIFACT_NOT_FOUND", "源任务的 Excel 不存在", status_code=404)
+        with workbook_lock(workbook):
+            pass
+        return workbook
+
+    def create_upload(self, request: UploadTaskRequest) -> dict[str, Any]:
+        self._source_workbook(request.source_task_id)
+        task = self.store.create(TaskKind.UPLOAD, request.model_dump(mode="json"))
+        self._log(task["task_id"], "Excel 全量发送任务已进入队列")
+        self._wake.set()
+        return task
+
     def pause(self, task_id: str) -> dict[str, Any]:
         task = self.store.request_pause(task_id)
         self._log(task_id, "收到用户暂停请求")
@@ -199,6 +237,10 @@ class ApiTaskService:
             elif kind == TaskKind.ANALYZE:
                 await self._execute_analyze(
                     task_id, AnalyzeTaskRequest.model_validate(task["params"])
+                )
+            elif kind == TaskKind.UPLOAD:
+                await self._execute_upload(
+                    task_id, UploadTaskRequest.model_validate(task["params"])
                 )
             else:
                 await self._execute_pipeline(
@@ -354,6 +396,47 @@ class ApiTaskService:
         self.store.finish(task_id, result=result, artifact_path=workbook)
         self._log(task_id, f"口播完成：成功 {succeeded}，跳过 {skipped}，失败 {failed}")
 
+    async def _execute_upload(
+        self, task_id: str, request: UploadTaskRequest
+    ) -> None:
+        workbook = self._source_workbook(request.source_task_id)
+        with workbook_lock(workbook):
+            book = load_workbook(workbook, read_only=True, data_only=True)
+            try:
+                if request.sheets:
+                    missing = sorted(set(request.sheets) - set(book.sheetnames))
+                    if missing:
+                        raise ValueError(f"Excel 中不存在 Sheet：{', '.join(missing)}")
+                    sheet_names = request.sheets
+                else:
+                    sheet_names = list(book.sheetnames)
+            finally:
+                book.close()
+
+        eligible = 0
+        sent = 0
+        for index, sheet_name in enumerate(sheet_names, start=1):
+            self._raise_if_paused(task_id)
+            self.store.update_progress(
+                task_id,
+                phase="upload",
+                current=index,
+                total=len(sheet_names),
+                sheet=sheet_name,
+            )
+            counts = await self._upload_sheet(task_id, workbook, sheet_name)
+            eligible += counts["eligible"]
+            sent += counts["sent"]
+
+        result = {
+            "sheets": sheet_names,
+            "eligible_rows": eligible,
+            "sent_rows": sent,
+            "artifact": self._artifact(workbook),
+        }
+        self.store.finish(task_id, result=result, artifact_path=workbook)
+        self._log(task_id, f"Excel 发送完成：合格 {eligible} 条，已发送 {sent} 条")
+
     async def _execute_pipeline(
         self, task_id: str, request: PipelineTaskRequest
     ) -> None:
@@ -493,7 +576,9 @@ class ApiTaskService:
             finally:
                 book.close()
 
-    async def _upload_sheet(self, task_id: str, workbook: Path, sheet_name: str) -> None:
+    async def _upload_sheet(
+        self, task_id: str, workbook: Path, sheet_name: str
+    ) -> dict[str, int]:
         payloads = self._sheet_payloads(task_id, workbook, sheet_name)
         pending = [
             (payload, digest)
@@ -541,6 +626,7 @@ class ApiTaskService:
                 sent=sent,
                 total=len(payloads),
             )
+        return {"eligible": len(payloads), "sent": sent}
 
     def health(self) -> dict[str, Any]:
         return {
