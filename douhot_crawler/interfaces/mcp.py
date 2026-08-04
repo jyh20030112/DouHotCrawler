@@ -1,15 +1,35 @@
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
 from typing import Any
+
+# Executing this file directly puts ``interfaces/`` at sys.path[0]. Because the
+# file itself is named ``mcp.py``, that would shadow the third-party ``mcp``
+# package imported below. Keep the project root importable while removing the
+# shadowing directory; package/console-script execution does not need this.
+if not __package__:
+    module_directory = Path(__file__).resolve().parent
+    project_root = module_directory.parent.parent
+    sys.path = [
+        entry
+        for entry in sys.path
+        if Path(entry or os.curdir).resolve() != module_directory
+    ]
+    sys.path.insert(0, str(project_root))
 
 import uvicorn
 from mcp.server.fastmcp import Context, FastMCP
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse
 
-from .config import DEFAULT_DETAIL_DELAY, DEFAULT_RESULT_TYPE, DEFAULT_TIME_RANGE
-from .job_service import JobManager
+from douhot_crawler.core.config import (
+    DEFAULT_DETAIL_DELAY,
+    DEFAULT_RESULT_TYPE,
+    DEFAULT_TIME_RANGE,
+)
+from douhot_crawler.services.jobs import JobManager
 
 manager = JobManager()
 mcp = FastMCP(

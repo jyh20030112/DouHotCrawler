@@ -10,8 +10,8 @@ from playwright.async_api import Locator, Page
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from .comments import fetch_top_comments
-from .config import DETAIL_DELAY_JITTER
-from .models import VideoIdentity, VideoRecord, video_identity
+from douhot_crawler.core.config import DETAIL_DELAY_JITTER
+from douhot_crawler.core.models import VideoIdentity, VideoRecord, video_identity
 
 
 PagePersistor = Callable[[list[VideoRecord], int], Awaitable[None]]

@@ -13,7 +13,7 @@ from urllib.request import Request, urlopen
 
 from openpyxl import load_workbook
 
-from douhot_crawler.config import (
+from douhot_crawler.core.config import (
     COOKIE_CONFIG_PATH,
     EXTRACT_API_URL,
     RESULT_EXCEL_PATH,
@@ -204,7 +204,11 @@ def analyze_excel(
 
             for row_number in range(2, worksheet.max_row + 1):
                 if stop_requested and stop_requested():
-                    print("已收到安全停止请求，已完成的口播已写入 Excel")
+                    print(
+                        "已收到安全停止请求，已完成的口播已写入 Excel："
+                        f"成功 {success_count} 个，跳过 {skipped_count} 个，"
+                        f"失败 {failed_count} 个"
+                    )
                     return success_count, skipped_count, failed_count
                 if args.limit is not None and processed_count >= args.limit:
                     break
@@ -234,7 +238,10 @@ def analyze_excel(
                     cell.alignment = alignment
                     workbook.save(args.excel)
                     success_count += 1
-                    print(f"  第 {row_number} 行口播已写入")
+                    print(
+                        f"  第 {row_number} 行口播已写入"
+                        f"（本次已完成 {success_count} 个）"
+                    )
                 except Exception as exc:
                     failed_count += 1
                     print(f"  第 {row_number} 行提取失败：{exc}", file=sys.stderr)
@@ -247,16 +254,16 @@ def analyze_excel(
     finally:
         workbook.close()
 
+    print(
+        f"\n口播提取完成：成功 {success_count} 个，"
+        f"跳过 {skipped_count} 个，失败 {failed_count} 个"
+    )
     return success_count, skipped_count, failed_count
 
 
 def main() -> None:
     args = parse_args()
-    success_count, skipped_count, failed_count = analyze_excel(args)
-    print(
-        f"\n完成：口播写入 {success_count} 条，"
-        f"跳过 {skipped_count} 条，失败 {failed_count} 条"
-    )
+    analyze_excel(args)
 
 
 if __name__ == "__main__":

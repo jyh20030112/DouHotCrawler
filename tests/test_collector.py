@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from douhot_crawler import collector
+from douhot_crawler.crawling import collector
 
 
 class FakeRows:

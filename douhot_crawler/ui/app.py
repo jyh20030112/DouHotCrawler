@@ -29,21 +29,27 @@ from qfluentwidgets import (InfoBar, InfoBarPosition, LineEdit, PlainTextEdit,
                             SubtitleLabel, TextEdit, Theme, TitleLabel,
                             isDarkTheme, setFont, setTheme, setThemeColor)
 
-from douhot_crawler.cookie_status import CookieStatus, inspect_douhot_cookie
-from douhot_crawler.analyzer import (DEFAULT_COOKIE_PATH, DEFAULT_EXCEL_PATH,
-                                     analyze_excel)
-from douhot_crawler.app import run as run_crawler
-from douhot_crawler.browser_setup import chromium_status, install_chromium
-from douhot_crawler.config import RESULT_EXCEL_PATH
-from douhot_crawler.login import run_login
-from douhot_crawler.models import RunOptions
-from douhot_crawler.settings_interface import (
+from douhot_crawler.browser.cookies import CookieStatus, inspect_douhot_cookie
+from douhot_crawler.browser.login import run_login
+from douhot_crawler.browser.setup import chromium_status, install_chromium
+from douhot_crawler.core.config import RESULT_EXCEL_PATH
+from douhot_crawler.core.models import RunOptions
+from douhot_crawler.crawling.runner import run as run_crawler
+from douhot_crawler.transcript.analyzer import (
+    DEFAULT_COOKIE_PATH,
+    DEFAULT_EXCEL_PATH,
+    analyze_excel,
+)
+from douhot_crawler.transcript.cookies import (
+    inspect_transcript_cookie,
+    save_transcript_cookie,
+)
+
+from douhot_crawler.ui.settings import (
     SettingsInterface,
     cfg,
     is_windows_11,
 )
-from douhot_crawler.transcript_cookie_status import (inspect_transcript_cookie,
-                                                     save_transcript_cookie)
 
 # KDE/Wayland 下 Qt 应使用内置的 Wayland text-input 协议，并由 KWin 转交
 # 给 Fcitx。系统全局 QT_IM_MODULE=fcitx 会要求 PySide6 加载 ABI 不兼容的

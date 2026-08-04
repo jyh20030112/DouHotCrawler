@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 
-from douhot_crawler import mcp_server
+from douhot_crawler.interfaces import mcp as mcp_server
 
 
 def test_crawl_tool_defaults_to_ten_results():

@@ -1,1 +1,1 @@
-"""抖音热榜爬虫 MVP 包。"""
+"""DouHotCrawler application package."""

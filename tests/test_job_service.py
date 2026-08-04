@@ -10,8 +10,8 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 from openpyxl import Workbook
 
-from douhot_crawler import job_service
-from douhot_crawler.job_service import JobManager, JobStore, ServiceSettings, user_key
+from douhot_crawler.services import jobs as job_service
+from douhot_crawler.services.jobs import JobManager, JobStore, ServiceSettings, user_key
 
 
 def settings(tmp_path: Path) -> ServiceSettings:

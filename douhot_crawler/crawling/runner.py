@@ -10,24 +10,24 @@ from datetime import datetime
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CacheMode, CrawlerRunConfig
 from playwright.async_api import Page
 
-from douhot_crawler.browser_patch import apply as _apply_browser_patch
+from douhot_crawler.browser.patch import apply as _apply_browser_patch
+from douhot_crawler.core.config import PROFILE_PATH, RESULT_EXCEL_PATH, TARGET_URL
+from douhot_crawler.core.models import RunOptions, VideoRecord
+from douhot_crawler.core.storage import (
+    excel_sheet_name,
+    existing_video_identities,
+    write_result_excel,
+)
 
 _apply_browser_patch()
 
 from .collector import collect_all_video_details
-from .config import PROFILE_PATH, RESULT_EXCEL_PATH, TARGET_URL
-from .models import RunOptions, VideoRecord
 from .page_actions import (
     click_result_type,
     click_time_range,
     print_input_candidates,
     submit_search,
     wait_for_search_input,
-)
-from .storage import (
-    excel_sheet_name,
-    existing_video_identities,
-    write_result_excel,
 )
 
 

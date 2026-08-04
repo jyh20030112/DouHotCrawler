@@ -21,8 +21,9 @@ from qfluentwidgets import (
     setFont,
 )
 
-from .config import PROFILE_PATH, RESULT_EXCEL_PATH
-from .ui_config import CONFIG_FILE, cfg, is_windows_11
+from douhot_crawler.core.config import PROFILE_PATH, RESULT_EXCEL_PATH
+
+from .config import CONFIG_FILE, cfg, is_windows_11
 
 
 try:

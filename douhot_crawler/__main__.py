@@ -3,8 +3,8 @@
 import asyncio
 import sys
 
-from .app import run
-from .cli import parse_args
+from .crawling.runner import run
+from .interfaces.crawl_cli import parse_args
 
 
 def main() -> None:

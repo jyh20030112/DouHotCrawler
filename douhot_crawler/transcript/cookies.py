@@ -8,8 +8,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import unquote
 
-from .cookie_status import CookieStatus
-from .config import COOKIE_CONFIG_PATH
+from douhot_crawler.browser.cookies import CookieStatus
+from douhot_crawler.core.config import COOKIE_CONFIG_PATH
 
 
 DEFAULT_TRANSCRIPT_COOKIE_PATH = COOKIE_CONFIG_PATH

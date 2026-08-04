@@ -4,9 +4,9 @@ import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from douhot_crawler.cookie_status import inspect_douhot_cookie
-from douhot_crawler.login import _login_run_config
-from douhot_crawler.transcript_cookie_status import (
+from douhot_crawler.browser.cookies import inspect_douhot_cookie
+from douhot_crawler.browser.login import _login_run_config
+from douhot_crawler.transcript.cookies import (
     inspect_transcript_cookie,
     save_transcript_cookie,
 )

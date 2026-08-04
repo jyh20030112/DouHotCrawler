@@ -10,11 +10,11 @@ from collections.abc import Callable
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CacheMode, CrawlerRunConfig
 
-from douhot_crawler.browser_patch import apply as _apply_browser_patch
+from douhot_crawler.browser.patch import apply as _apply_browser_patch
 
 _apply_browser_patch()
 
-from .config import LOGIN_URL, PROFILE_PATH
+from douhot_crawler.core.config import LOGIN_URL, PROFILE_PATH
 
 
 def _stdin_has_data() -> bool:

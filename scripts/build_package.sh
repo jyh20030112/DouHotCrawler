@@ -6,7 +6,7 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
 
-ICON_RELATIVE_PATH="douhot_crawler/resources/favicon.ico"
+ICON_RELATIVE_PATH="douhot_crawler/ui/resources/favicon.ico"
 
 if [[ ! -f "$ICON_RELATIVE_PATH" ]]; then
   echo "Required build resource not found: $ICON_RELATIVE_PATH" >&2
@@ -28,7 +28,7 @@ uv run --no-sync --group build pyinstaller \
   --windowed \
   --name DouHotCrawler \
   --icon "$ICON_PATH" \
-  --add-data "$ICON_PATH:douhot_crawler/resources" \
+  --add-data "$ICON_PATH:douhot_crawler/ui/resources" \
   --specpath build \
   --workpath build/pyinstaller \
   --distpath dist \

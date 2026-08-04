@@ -4,7 +4,7 @@ import argparse
 import asyncio
 import sys
 
-from .login import run_login
+from douhot_crawler.browser.login import run_login
 
 
 def main() -> None:

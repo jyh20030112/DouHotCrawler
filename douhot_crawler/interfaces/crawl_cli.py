@@ -2,13 +2,13 @@
 
 import argparse
 
-from .config import (
+from douhot_crawler.core.config import (
     DEFAULT_RESULT_TYPE,
     DEFAULT_TIME_RANGE,
     DEFAULT_DETAIL_DELAY,
     TIME_RANGE_CHOICES,
 )
-from .models import RunOptions
+from douhot_crawler.core.models import RunOptions
 
 
 def parse_args() -> RunOptions:

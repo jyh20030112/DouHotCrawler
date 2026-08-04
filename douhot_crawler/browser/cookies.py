@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from .config import PROFILE_PATH
+from douhot_crawler.core.config import PROFILE_PATH
 
 
 # Chromium 的 expires_utc 以 1601-01-01 为起点，单位是微秒。
