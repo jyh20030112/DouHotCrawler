@@ -387,6 +387,28 @@ def test_api_routes_and_validation_envelope(tmp_path: Path) -> None:
         assert invalid.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
+def test_openapi_documents_workflow_examples_and_errors(tmp_path: Path) -> None:
+    schema = create_app(settings(tmp_path), service=FakeRouteService()).openapi()
+
+    assert "FIFO" in schema["info"]["description"]
+    assert [item["name"] for item in schema["tags"]] == [
+        "系统",
+        "关键词",
+        "任务创建",
+        "任务控制",
+    ]
+    crawl = schema["paths"]["/api/v1/tasks/crawl"]["post"]
+    assert crawl["summary"] == "创建单关键词爬取任务"
+    assert crawl["tags"] == ["任务创建"]
+    assert crawl["responses"]["202"]["description"] == "Successful Response"
+    assert "ErrorResponse" in str(crawl["responses"]["502"])
+    request_schema = schema["components"]["schemas"]["CrawlTaskRequest"]
+    assert request_schema["examples"][0]["keyword"] == "大健康"
+    assert "最多采集条数" in request_schema["properties"]["limit"]["description"]
+    task_schema = schema["components"]["schemas"]["TaskResponse"]
+    assert task_schema["examples"][0]["progress"]["current"] == 3
+
+
 def test_daily_launcher_submits_once_and_prints_task_id(monkeypatch, capsys) -> None:
     request: dict[str, Any] = {}
 
