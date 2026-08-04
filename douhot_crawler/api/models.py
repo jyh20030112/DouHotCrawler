@@ -90,7 +90,13 @@ class CrawlTaskRequest(BaseModel):
     ] = DEFAULT_DETAIL_DELAY
     limit: Annotated[
         int | None,
-        Field(ge=1, le=500, description="最多采集条数；不传时默认最多 500 条。"),
+        Field(
+            ge=1,
+            le=500,
+            description=(
+                "最多采集条数；null 时使用 DOUHOT_MAX_VIDEOS_PER_KEYWORD，默认 3。"
+            ),
+        ),
     ] = None
 
     @field_validator("keyword")
@@ -225,7 +231,10 @@ class PipelineTaskRequest(BaseModel):
         Field(
             ge=1,
             le=500,
-            description="每个关键词最多采集条数；null 时每个关键词最多 500 条。",
+            description=(
+                "每个关键词最多采集条数；null 时使用 "
+                "DOUHOT_MAX_VIDEOS_PER_KEYWORD，默认 3。"
+            ),
         ),
     ] = None
     overwrite_transcript: bool = Field(

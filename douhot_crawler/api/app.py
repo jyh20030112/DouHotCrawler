@@ -38,7 +38,7 @@ DouHotCrawler 的异步任务 API，接口前缀统一为 `/api/v1`。
 
 - 所有 crawl、analyze、upload 和 pipeline 任务进入同一个持久化 FIFO 队列，严格串行执行。
 - pipeline 按关键词依次执行 **爬取 → 口播提取 → 每 20 条发送**，不会并发处理关键词。
-- 单关键词默认最多 500 条；`keywords=null` 时从热点接口获取默认 30 个关键词。
+- 单关键词默认最多 3 条，可通过 `DOUHOT_MAX_VIDEOS_PER_KEYWORD` 调整；`keywords=null` 时从热点接口获取默认 30 个关键词。
 - Cookie 在每个阶段从外部配置接口读取，只保存在内存，不写入 SQLite、Excel 或日志。
 - Excel 使用跨进程文件锁与原子替换保存。
 - Excel 和任务日志保留 3 天，终态 SQLite 元数据保留 7 天；活动及暂停任务不会清理。
@@ -185,7 +185,7 @@ def create_app(
         description=(
             "任务进入全局 FIFO 队列并立即返回 task_id。执行时实时获取 type=0 的 DouHot "
             "Cookie，在无持久化 Profile 的临时浏览器上下文中爬取；结果写入该任务自己的 "
-            "`tasks/{task_id}/result.xlsx`。不传 limit 时最多采集 500 条。"
+            "`tasks/{task_id}/result.xlsx`。不传 limit 时使用环境变量配置的每关键词上限，默认 3 条。"
         ),
         responses=ERROR_RESPONSES,
     )

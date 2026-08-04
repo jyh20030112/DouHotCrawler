@@ -132,7 +132,7 @@ uv run douhot-api
 | --- | --- | --- |
 | `GET` | `/api/v1/health` | 数据库、worker 和浏览器状态 |
 | `GET` | `/api/v1/keywords` | 返回 `{"key_word": [...]}` 热点关键词 |
-| `POST` | `/api/v1/tasks/crawl` | 创建单关键词爬取任务，默认最多 500 条 |
+| `POST` | `/api/v1/tasks/crawl` | 创建单关键词爬取任务，默认最多 3 条 |
 | `POST` | `/api/v1/tasks/analyze` | 为已成功的爬取任务补充口播 |
 | `POST` | `/api/v1/tasks/pipeline` | 顺序执行关键词获取、爬取、口播和发送 |
 | `POST` | `/api/v1/tasks/upload` | 将指定任务现有 Excel 的全部合格数据分批发送 |
@@ -140,7 +140,7 @@ uv run douhot-api
 | `POST` | `/api/v1/tasks/{task_id}/resume` | 恢复 paused 任务 |
 | `GET` | `/api/v1/tasks/{task_id}` | 查询状态、进度、告警与结果文件信息 |
 
-不传 `keywords` 时流水线读取全部热点关键词（默认 30 个）；也可传入不超过 30 个关键词覆盖。发送阶段跳过缺少视频名称、URL、博主或口播的行，每 20 条一批；粉丝数会转换为整数，无法解析时按 `0` 发送并记录告警。Excel、任务日志保留 3 天，SQLite 元数据保留 7 天，运行中或暂停中的任务不会清理。
+不传 `keywords` 时流水线读取全部热点关键词（默认 30 个）；也可传入不超过 30 个关键词覆盖。每个关键词默认最多爬取 3 条，可通过 `.env` 中的 `DOUHOT_MAX_VIDEOS_PER_KEYWORD`（1–500）调整，也可由请求的 `limit` / `limit_per_keyword` 临时覆盖。发送阶段跳过缺少视频名称、URL、博主或口播的行，每 20 条一批；粉丝数会转换为整数，无法解析时按 `0` 发送并记录告警。Excel、任务日志保留 3 天，SQLite 元数据保留 7 天，运行中或暂停中的任务不会清理。
 
 每天上海时区凌晨 3 点可通过 cron 调用轻量脚本。它只创建任务、输出 `task_id` 后退出；已有 active/paused 流水线时服务返回原任务，不重复创建。
 

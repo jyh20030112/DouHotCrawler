@@ -56,7 +56,10 @@ class ApiSettings(BaseSettings):
     read_timeout_seconds: Annotated[float, Field(gt=0)] = 90.0
     artifact_retention_days: Annotated[int, Field(ge=1)] = 3
     metadata_retention_days: Annotated[int, Field(ge=1)] = 7
-    max_videos_per_keyword: Literal[500] = 500
+    max_videos_per_keyword: Annotated[int, Field(ge=1, le=500)] = Field(
+        default=3,
+        validation_alias="DOUHOT_MAX_VIDEOS_PER_KEYWORD",
+    )
     upload_batch_size: Literal[20] = 20
 
     @field_validator("data_root", mode="after")

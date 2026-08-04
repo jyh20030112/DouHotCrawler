@@ -46,8 +46,11 @@ def test_settings_accepts_single_worker_from_environment(
     monkeypatch.setenv("DOUHOT_HOTSPOT_OPEN_ID", "test-open-id")
     monkeypatch.setenv("DOUHOT_API_DATA_ROOT", str(tmp_path))
     monkeypatch.setenv("DOUHOT_API_WORKERS", "1")
+    monkeypatch.setenv("DOUHOT_MAX_VIDEOS_PER_KEYWORD", "17")
 
-    assert ApiSettings().workers == 1
+    configured = ApiSettings()
+    assert configured.workers == 1
+    assert configured.max_videos_per_keyword == 17
 
 
 def test_task_store_fifo_pause_resume_and_restart_recovery(tmp_path: Path) -> None:
@@ -313,9 +316,11 @@ async def test_pipeline_runs_keywords_sequentially_and_uploads_batches(
     fake_client = FakeExternalClient()
     service = ApiTaskService(settings(tmp_path), client=fake_client)
     execution_order: list[str] = []
+    crawl_limits: list[int] = []
 
     async def fake_crawler(options, **kwargs):
         execution_order.append(f"crawl:{options.keyword}")
+        crawl_limits.append(kwargs["max_results"])
         path = Path(kwargs["excel_path"])
         if path.exists():
             workbook = load_workbook(path)
@@ -376,6 +381,7 @@ async def test_pipeline_runs_keywords_sequentially_and_uploads_batches(
     assert completed["status"] == TaskStatus.SUCCEEDED_WITH_WARNINGS
     assert completed["result"]["keywords_succeeded"] == 2
     assert execution_order == ["crawl:甲", "analyze:甲", "crawl:乙", "analyze:乙"]
+    assert crawl_limits == [3, 3]
     assert [len(batch) for batch in fake_client.uploads] == [20, 1, 20, 1]
     assert all(
         isinstance(row["followerCount"], int)
