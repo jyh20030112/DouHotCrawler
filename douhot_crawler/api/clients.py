@@ -100,9 +100,20 @@ class ExternalApiClient:
                 raise ExternalServiceError(service, message)
 
             try:
-                return response.json()
+                result = response.json()
             except ValueError as exc:
                 raise ExternalServiceError(service, "响应不是有效 JSON") from exc
+
+            if isinstance(result, dict):
+                business_code = result.get("code")
+                if (
+                    isinstance(business_code, int)
+                    and (business_code == 429 or business_code >= 500)
+                    and attempt < len(delays) - 1
+                ):
+                    last_error = RuntimeError(f"业务状态码 {business_code}")
+                    continue
+            return result
 
         raise ExternalServiceError(service, str(last_error or "请求失败"))
 

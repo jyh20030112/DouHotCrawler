@@ -154,6 +154,34 @@ async def test_external_client_retries_5xx_three_times(tmp_path: Path, monkeypat
     await http_client.aclose()
 
 
+@pytest.mark.asyncio
+async def test_external_client_retries_business_5xx_three_times(
+    tmp_path: Path, monkeypatch
+) -> None:
+    attempts = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts < 4:
+            return httpx.Response(
+                200, json={"code": 500, "message": "请求处理异常，请稍后再试"}
+            )
+        return httpx.Response(
+            200, json={"code": 200, "message": "操作成功", "data": "sid=ok"}
+        )
+
+    async def no_sleep(delay: float) -> None:
+        return None
+
+    monkeypatch.setattr("douhot_crawler.api.clients.asyncio.sleep", no_sleep)
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = ExternalApiClient(settings(tmp_path), client=http_client)
+    assert await client.fetch_cookie(0) == "sid=ok"
+    assert attempts == 4
+    await http_client.aclose()
+
+
 def test_follower_count_parser() -> None:
     assert parse_follower_count("1.2万") == (12_000, False)
     assert parse_follower_count("3.45亿") == (345_000_000, False)
