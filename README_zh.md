@@ -1,119 +1,180 @@
-# DouHotCrawler 使用指南
+# DouHotCrawler
 
-DouHotCrawler 用于按关键词采集 Douhot 热榜视频，并将结果保存为 Excel；也可以为已有视频补全口播文本。
+中文 | [English](README.md)
 
-使用桌面版无需安装 Python、uv 或其他开发工具。
+DouHotCrawler 用于按关键词采集热点宝（Douhot）榜单视频，将结果增量保存到 Excel，并可通过独立配置的私有接口补全视频口播。桌面 GUI、命令行和 Streamable HTTP MCP 服务共用同一套核心模块。
 
-## MCP 服务
+> 本项目会自动操作第三方网站，页面变更、账号状态、访问频率限制或平台规则都可能影响运行。请仅采集你有权访问和处理的数据。
 
-项目同时提供独立的 Streamable HTTP MCP 服务。CLI、桌面 GUI 和 MCP 共用同一套爬取、登录与口播提取实现。
+## 主要功能
+
+- 按关键词、榜单类型和时间范围采集视频。
+- 将视频信息和高赞评论写入按关键词划分的 Excel Sheet。
+- 自动跳过工作簿中已存在的视频，支持持续增量采集。
+- 通过私有提取接口为已有记录补充口播文本。
+- 安全检查爬虫登录态和口播 Cookie 状态，不输出 Cookie 内容。
+- 提供桌面 GUI、CLI 和带 Bearer 认证的 MCP 服务。
+- 使用 PyInstaller 构建 Windows、macOS 和 Linux 原生桌面包。
+
+## 环境要求
+
+使用发布包只需受支持的桌面系统，以及 Google Chrome 或 Microsoft Edge；若未安装，程序可下载 Playwright Chromium。
+
+| 安装包 | 适用平台 |
+| --- | --- |
+| `DouHotCrawler-windows-x86_64.zip` | Windows 10 及以上，Intel/AMD 处理器 |
+| `DouHotCrawler-macos-arm64.zip` | Apple Silicon macOS |
+| `DouHotCrawler-Linux-x86_64.zip` | x86_64 Linux 桌面系统 |
+
+源码运行需要 Python 3.12+、[uv](https://docs.astral.sh/uv/) 和 Git。
+
+## 快速开始
+
+### 桌面安装包
+
+1. 从 Releases 或成功的 **Package desktop application** 工作流下载对应压缩包。
+2. 完整解压，不要单独移动主程序。
+3. Windows 启动 `DouHotCrawler.exe`，macOS 启动 `DouHotCrawler.app`，Linux 运行 `./DouHotCrawler/DouHotCrawler`。
+4. 确认“浏览器准备”显示可用；需要时点击“下载浏览器”。
+5. 打开爬虫登录流程，扫码后保存登录状态。
+6. 在“热榜爬取”页面填写关键词并开始采集。
+
+当前发布包未进行代码签名。macOS 可按住 Control 点击应用后选择“打开”。只有在确认文件来自可信的项目 Release 或 Actions 构建产物时，才应跳过系统警告。
+
+### 源码运行
 
 ```bash
+git clone <repo-url>
+cd crael4i-demo
+uv sync
 cp .env.example .env
-# 设置 DOUHOT_MCP_TOKEN、DOUHOT_DOWNLOAD_SECRET 和 EXTRACT_API_URL
-uv run douhot-mcp
+uv run douhot-gui
 ```
 
-默认地址为 `http://127.0.0.1:8765/mcp`。MCP 暴露健康检查、网页扫码登录、异步爬取、批量分析、任务查询/取消、候选视频列表和单条口播提取 tools。所有 Profile、Cookie、任务和 Excel 均按受信任 `user_id` 的哈希隔离；Excel 和二维码下载地址带 15 分钟签名。
+`.env` 可能包含私有接口和密钥，已被 Git 忽略。
 
-## 系统要求
+## 使用方式
 
-- **浏览器**：系统需安装 **Google Chrome** 或 **Microsoft Edge**
+### 桌面 GUI
 
-请选择与操作系统和 CPU 架构对应的安装包：
+- **热榜爬取**：设置关键词、榜单类型和时间范围；日志会显示进度，记录按页增量保存。
+- **口播提取**：可选择 Sheet、数量限制及是否覆盖；默认保留已有口播。
+- **下载 Excel**：将当前结果工作簿导出到指定位置。
+- **安全停止**：完成当前记录并保存后停止任务。
 
-| 安装包 | 适用设备 |
-| --- | --- |
-| `DouHotCrawler-windows-x86_64.zip` | Windows 10 及以上，Intel / AMD x86_64 处理器 |
-| `DouHotCrawler-macos-arm64.zip` | Apple Silicon Mac（M1 / M2 / M3 / M4） |
-| `DouHotCrawler-Linux-x86_64.zip` | x86_64 Linux 桌面系统；构建环境为 Ubuntu 24.04 |
-
-- 暂未提供 Windows ARM 和 Intel Mac 安装包。
-- 未检测到 Chrome 或 Edge 时，可在程序内下载 Chromium。
-
-## 下载与安装
-
-正式版本请在仓库的 **Releases** 页面下载对应 zip 包；测试中的构建可在 GitHub **Actions** 的成功 "Package desktop application" 工作流中下载。
-
-1. 解压下载的 zip 文件。
-2. 保留解压后的全部文件，不要单独移动主程序。
-3. 按系统启动：
-
-   | 系统 | 启动方式 |
-   | --- | --- |
-   | Windows | 双击 `DouHotCrawler/DouHotCrawler.exe`。不要将 `.exe` 移出该文件夹。 |
-   | macOS（Apple Silicon） | 双击 `DouHotCrawler.app`。若系统阻止打开未签名应用，请按住 Control 点击应用，选择“打开”并确认。 |
-   | Linux x86_64 | 在解压目录执行一次 `chmod +x DouHotCrawler/DouHotCrawler`，随后执行 `./DouHotCrawler/DouHotCrawler`。 |
-
-## 首次使用
-
-开始前请准备稳定网络、可登录 Douhot 和抖音的个人账号。
-
-1. 启动程序后，界面会自动检测系统 Chrome / Edge 是否可用。
-2. 若未检测到 Chrome / Edge，"浏览器准备"卡片会显示"下载浏览器"，点击即可下载 Chromium。下载过程中请保持网络连接。
-3. 确认"浏览器准备"显示"浏览器已就绪"。
-4. 点击"爬虫 Cookie 检测"的状态按钮，浏览器会打开 Douhot 登录页。完成扫码后，点击"已完成扫码，保存登录"。
-5. 如需提取口播，在"口播提取"页粘贴从抖音网页取得的完整 Cookie，并点击"保存口播 Cookie 并检测"。请勿向他人发送 Cookie。
-
-完成以上步骤后，后续启动通常不需要再次下载浏览器或重复登录；登录状态失效时按相同步骤重新操作。
-
-## 采集热榜
-
-1. 打开"热榜爬取"页。
-2. 输入关键词，例如"美容"。
-3. 选择榜单类型和时间范围。
-4. 点击"开始爬取"。
-5. 在下方"运行日志"查看进度。任务结束后，结果保存到 Excel。
-
-重复采集同一关键词时，已存在的视频会自动跳过，适合持续补充数据。
-
-## 提取视频口播
-
-开始前需配置私有口播提取服务。在本地创建 `.env` 文件并填写：
+### 命令行
 
 ```bash
+# 扫码登录并保存热点宝浏览器 Profile
+uv run douhot-login
+
+# 采集关键词
+uv run douhot-crawl "美容" \
+  --result-type "视频总榜" \
+  --time-range "近7天"
+
+# 为工作簿补充口播
+uv run douhot-analyze --limit 20
+```
+
+使用 `--help` 查看各命令的完整参数。`python -m douhot_crawler` 等价于 `douhot-crawl`。
+
+### 配置口播提取服务
+
+在项目根目录的 `.env` 中设置私有接口：
+
+```dotenv
 EXTRACT_API_URL=http://your-api-host:28600/api/v1/videos/extract
 ```
 
-Windows / Linux 桌面版将 `.env` 放在主程序旁；macOS 将 `.env` 放在 `DouHotCrawler.app` 旁。源码运行时可将 `.env.example` 复制为项目根目录下的 `.env`。`.env` 不会被 Git 跟踪，严禁提交或分享；已设置的系统环境变量优先于 `.env`。
+桌面发布包将 `.env` 放在可执行文件或 `.app` 旁。GUI 会把抖音 Cookie 保存在系统应用数据目录；请勿提交或分享该文件。
 
-1. 先完成至少一次热榜采集，确保已有结果 Excel。
-2. 打开"口播提取"页。
-3. 如有需要，填写指定 Sheet 名称、最多处理条数或请求间隔。
-4. 点击"开始提取口播"。
+### MCP 服务
 
-已写入口播的记录默认跳过；如确实要重新提取，勾选"覆盖已有口播"。
+至少配置访问令牌和下载签名密钥：
 
-## 导出与停止
+```bash
+cp .env.example .env
+# 修改 DOUHOT_MCP_TOKEN、DOUHOT_DOWNLOAD_SECRET 和 EXTRACT_API_URL
+uv run douhot-mcp
+```
 
-- 任务完成后，点击窗口顶部"下载 Excel"，选择保存位置即可导出结果。
-- 需要停止时，点击"终止当前任务"。程序会完成当前记录，保存已完成的内容后停止。
-- 请在任务结束后再关闭程序或导出 Excel。
+默认端点为 `http://127.0.0.1:8765/mcp`，请求需携带 `Authorization: Bearer <DOUHOT_MCP_TOKEN>`。服务支持健康检查、扫码登录、爬取、批量分析、任务查询/等待/取消、候选视频列表、单条口播提取和签名下载。数据按可信 `user_id` 的哈希隔离，下载链接 15 分钟后失效。
 
-## 常见问题
+| 环境变量 | 默认值 | 用途 |
+| --- | --- | --- |
+| `DOUHOT_MCP_TOKEN` | 必填 | MCP Bearer Token |
+| `DOUHOT_MCP_HOST` | `127.0.0.1` | 监听地址 |
+| `DOUHOT_MCP_PORT` | `8765` | 监听端口 |
+| `DOUHOT_PUBLIC_URL` | `http://127.0.0.1:8765` | 签名下载链接的基础地址 |
+| `DOUHOT_DOWNLOAD_SECRET` | 部署时必须修改 | 下载链接 HMAC 密钥 |
+| `DOUHOT_DATA_ROOT` | 系统应用数据目录 | MCP 任务、Profile 和工作簿目录 |
+| `DOUHOT_LOGIN_TIMEOUT_SECONDS` | `300` | 扫码登录超时秒数 |
+| `DOUHOT_COOKIE_SOURCE` | 项目 `cookie.config` | 可选的初始口播 Cookie 来源 |
 
-### 未检测到 Chrome / Edge
+不要使用示例密钥将服务暴露到公网；监听非本机地址时，应在服务前增加 TLS 和必要的访问控制。
 
-请确保已安装 Google Chrome 或 Microsoft Edge。如果已安装但仍未检测到，可以点击"浏览器准备"中的按钮手动下载 Chromium。
+## 项目架构
 
-### 无法下载 Chromium
+源码按职责拆分，依赖方向收敛到 `core`，GUI 和外部协议入口位于边缘层：
 
-检查网络连接、磁盘空间和系统代理设置，然后重试。
+```text
+crael4i-demo/
+├── douhot_crawler/
+│   ├── core/             # 配置、共享模型、Excel 持久化
+│   ├── browser/          # 浏览器检测、Playwright 补丁、登录、Cookie
+│   ├── crawling/         # 页面交互、内容采集、爬取编排
+│   ├── transcript/       # 口播接口客户端与 Cookie 管理
+│   ├── services/         # 多用户任务生命周期与签名下载
+│   ├── interfaces/       # 爬取/登录 CLI 与 MCP
+│   ├── ui/               # Qt 桌面应用、设置和资源
+│   └── __main__.py       # `python -m douhot_crawler` 入口
+├── tests/                # 单元测试和异步服务测试
+├── scripts/              # GUI 启动和 PyInstaller 构建脚本
+├── .github/workflows/    # 测试、打包和发布自动化
+└── pyproject.toml        # 项目元数据、依赖和命令入口
+```
 
-### 无法开始爬取
+主要调用链：
 
-确认"浏览器准备"显示"浏览器已就绪"，并已完成 Douhot 扫码登录。
+```text
+GUI / CLI / MCP
+       │
+       ├── crawling ── browser 自动化 ── 热点宝
+       │       └── core/storage ── Excel
+       └── transcript ── 私有口播提取接口
 
-### 无法提取口播
+MCP ── services/jobs ── 用户隔离的 Profile、任务、Excel、签名下载
+```
 
-请重新从抖音网页复制完整 Cookie 并保存。Cookie 可能因退出登录、过期或账号状态变化而失效。
+## 本地数据位置
 
-### Windows 或 macOS 阻止打开应用
+默认运行数据不会写入源码目录：
 
-这是未签名应用的系统安全提示。仅在确认 zip 来自本仓库 Release 或 Actions 构建产物后继续。macOS 可按住 Control 点击应用，选择“打开”后确认；不要从不可信来源下载程序。
+| 平台 | 数据目录 |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%/DouHotCrawler` |
+| macOS | `~/Library/Application Support/DouHotCrawler` |
+| Linux | `${XDG_DATA_HOME:-~/.local/share}/DouHotCrawler` |
 
-## 隐私与账号安全
+爬虫浏览器 Profile 位于 `~/.crawl4ai/profiles/douhot`。不要上传或分享 Profile、Cookie、工作簿、登录二维码，以及包含个人信息的日志。
 
-- Douhot 登录状态和抖音 Cookie 仅保存在使用者自己的电脑上。
-- 不要上传、共享或发送 Cookie、登录二维码、结果 Excel 或包含个人信息的日志。
-- 使用前请确认你的账号和使用方式符合相关平台的规则。
+## 开发与打包
+
+```bash
+# 安装运行和开发依赖
+uv sync
+
+# 运行全部测试
+uv run pytest -q
+
+# 为当前系统和架构构建桌面包
+uv sync --group build
+bash scripts/build_package.sh
+```
+
+构建产物位于 `dist/`。代码规范和 PR 流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+## 使用边界
+
+本项目仅用于个人学习和经授权的数据采集。使用者需自行遵守平台规则、适用法律、账号权限和数据保护要求。

@@ -23,7 +23,7 @@ This installs all runtime dependencies into a `.venv` at the project root.
 ### Verify
 
 ```bash
-uv run python -m unittest discover -s tests -v
+uv run pytest -q
 ```
 
 All tests should pass before you start making changes.
@@ -33,21 +33,14 @@ All tests should pass before you start making changes.
 ```
 crael4i-demo/
 ├── douhot_crawler/       # Main application package
-│   ├── gui.py            # Qt desktop GUI (main entry point)
-│   ├── app.py            # Crawl orchestration
-│   ├── collector.py      # Video detail collection logic
-│   ├── login.py          # Douhot QR-code login flow
-│   ├── analyzer.py       # Transcript extraction
-│   ├── page_actions.py   # Browser page-level actions
-│   ├── storage.py        # Excel read/write
-│   ├── config.py         # Constants and paths
-│   ├── models.py         # Data models
-│   ├── browser_setup.py  # Browser detection & Chromium install
-│   ├── browser_patch.py  # Playwright channel injection patch
-│   ├── cookie_status.py  # Crawler cookie inspection
-│   ├── transcript_cookie_status.py  # Transcript cookie inspection
-│   ├── cli.py            # CLI entry points
-│   └── __main__.py       # Package entry point
+│   ├── core/             # Config, models, and Excel persistence
+│   ├── browser/          # Browser setup, login, patch, and cookies
+│   ├── crawling/         # Crawl orchestration and page automation
+│   ├── transcript/       # Transcript extraction and cookie handling
+│   ├── services/         # MCP job lifecycle and per-user storage
+│   ├── interfaces/       # CLI and MCP entry points
+│   ├── ui/               # Qt desktop app, settings, and resources
+│   └── __main__.py       # Package CLI entry point
 ├── scripts/              # Build and launch scripts
 │   ├── build_package.sh  # PyInstaller packaging
 │   └── pyinstaller_gui.py  # PyInstaller entry point
@@ -89,14 +82,15 @@ uv run douhot-login
 
 ## Testing
 
-Tests use Python's built-in `unittest` framework:
+Tests use `pytest` with `pytest-asyncio`; some small test classes still use
+Python's built-in `unittest` assertions:
 
 ```bash
 # Run all tests
-uv run python -m unittest discover -s tests -v
+uv run pytest -q
 
 # Run a single test file
-uv run python -m unittest tests/test_cookie_status.py -v
+uv run pytest tests/test_cookie_status.py -q
 ```
 
 When adding new features, include tests that cover:
@@ -230,10 +224,10 @@ If it changes CLI output, paste sample output.
 
 ## Key Constraints
 
-- **Windows-only packaging**: the desktop bundle only ships for Windows x86_64. Cross-platform source compatibility should be maintained (`sys.platform` guards where needed), but packaging for other platforms is not currently supported.
+- **Native packaging**: CI builds Windows x86_64, Linux x86_64, and macOS arm64 bundles. Keep platform-specific behavior behind `sys.platform` guards.
 - **Chrome / Edge first**: the app prefers a system-installed Chrome or Edge browser. Chromium download via Playwright is a fallback. Changes to browser detection should not regress system browser discovery.
 - **Cookie safety**: never log, display, or write cookie values to disk outside the designated Chromium profile or `cookie.config`. The cookie status module is intentionally read-only on cookie contents.
-- **No external services**: the app runs entirely locally. Do not introduce telemetry, analytics, or network calls beyond those required by the crawling and login flows.
+- **No telemetry**: do not introduce analytics or unrelated network calls. The only expected remote access is browser automation and the explicitly configured transcript API.
 
 ## Need Help?
 

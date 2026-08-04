@@ -1,116 +1,184 @@
 # DouHotCrawler
 
-A desktop application for crawling the Douhot trending video board by keyword, saving results to Excel, and supplementing existing videos with transcript text.
+[中文文档](README_zh.md) | English
 
-No Python, uv, or other developer tools required — just download and run.
+DouHotCrawler collects keyword-based trending video data from Douhot (热点宝), stores results incrementally in Excel, and can enrich saved videos with transcript text. It provides a Qt desktop app, command-line tools, and a Streamable HTTP MCP service backed by the same application modules.
 
-## System Requirements
+> This project automates a third-party website. Page changes, account state, rate limits, or platform policy may affect it. Use it only with accounts and data you are authorized to access.
 
-- **Browser**: **Google Chrome** or **Microsoft Edge** must be installed. Chromium can be downloaded from within the app if neither is available.
+## Features
 
-Choose the package that matches both your operating system and CPU:
+- Search by keyword, result type, and time range.
+- Collect video metadata and top comments into per-keyword Excel sheets.
+- Skip videos already present in the workbook for incremental collection.
+- Extract transcripts through a separately configured private API.
+- Inspect crawler and transcript-cookie status without logging cookie values.
+- Run through a desktop GUI, CLI, or authenticated MCP endpoint.
+- Package native Windows, macOS, and Linux desktop bundles with PyInstaller.
 
-| Package | Use it on |
+## Requirements
+
+For a release package, only a supported desktop OS and Google Chrome or Microsoft Edge are required. The app can download Playwright Chromium when neither browser is available.
+
+| Artifact | Platform |
 | --- | --- |
-| `DouHotCrawler-windows-x86_64.zip` | Windows 10 or later on Intel / AMD (x86_64) CPUs |
-| `DouHotCrawler-macos-arm64.zip` | Apple Silicon Macs (M1 / M2 / M3 / M4) |
-| `DouHotCrawler-Linux-x86_64.zip` | x86_64 Linux desktop systems; built on Ubuntu 24.04 |
+| `DouHotCrawler-windows-x86_64.zip` | Windows 10+ on Intel/AMD |
+| `DouHotCrawler-macos-arm64.zip` | Apple Silicon macOS |
+| `DouHotCrawler-Linux-x86_64.zip` | x86_64 Linux desktop |
 
-- Windows on ARM and Intel-based Macs are not currently packaged.
+Running from source requires Python 3.12+, [uv](https://docs.astral.sh/uv/), and Git.
 
-## Download
+## Quick Start
 
-For a tagged version, download the matching zip from the repository's **Releases** page. Builds from an in-progress change are available as artifacts in a successful **Package desktop application** GitHub Actions run.
+### Desktop package
 
-## Install and Launch
+1. Download the matching archive from Releases or a successful **Package desktop application** workflow run.
+2. Extract the entire archive and keep its files together.
+3. Launch `DouHotCrawler.exe` on Windows, `DouHotCrawler.app` on macOS, or `./DouHotCrawler/DouHotCrawler` on Linux.
+4. Confirm the Browser Setup card is ready. Use **Download Browser** if needed.
+5. Open the crawler-login flow, scan the QR code, then save the login.
+6. Enter a keyword on the Trending Crawl page and start collecting.
 
-1. Extract the downloaded zip; keep all extracted files together.
-2. Start the application for your platform:
+The distributed applications are not code-signed. On macOS, Control-click the app and choose **Open**. Only bypass an operating-system warning when the archive came from a trusted project release or workflow artifact.
 
-   | Platform | Launch command / action |
-   | --- | --- |
-   | Windows | Double-click `DouHotCrawler/DouHotCrawler.exe`. Do not move the `.exe` out of its folder. |
-   | macOS (Apple Silicon) | Double-click `DouHotCrawler.app`. If macOS blocks an unsigned app, Control-click it, choose **Open**, then confirm. |
-   | Linux x86_64 | Run `chmod +x DouHotCrawler/DouHotCrawler` once, then run `./DouHotCrawler/DouHotCrawler` from the extracted directory. |
-3. The app detects Chrome or Edge automatically. If neither is found, click **"Download Browser"** in the Browser Setup card.
-4. In the **Crawler Cookie** card, open the Douhot login page, scan the QR code, and click **"Done, Save Login"**.
-5. (Optional) For transcript extraction, paste your full `www.douyin.com` cookie into the **Transcript Cookie** tab and save.
-
-After the first run, subsequent launches typically won't need another browser download or re-login.
-
-## Crawling Trending Videos
-
-1. Open the **"热榜爬取"** (Trending Crawl) tab.
-2. Enter a keyword, e.g. `美容` (beauty).
-3. Pick a result type and time range.
-4. Click **"开始爬取"** (Start Crawl).
-5. Monitor progress in the log panel. Results are written to Excel incrementally.
-
-When re-crawling the same keyword, existing videos are automatically skipped — ideal for ongoing data collection.
-
-## Extracting Transcripts
-
-Before using transcript extraction, create a local `.env` file containing your private extraction-service endpoint:
+### From source
 
 ```bash
-EXTRACT_API_URL=http://your-api-host:28600/api/v1/videos/extract
-```
-
-For the desktop package, place `.env` beside `DouHotCrawler.exe` / `DouHotCrawler` on Windows or Linux, or beside `DouHotCrawler.app` on macOS. For a source checkout, copy `.env.example` to `.env` in the project directory. `.env` is excluded from Git and must never be committed. A pre-set system environment variable takes precedence over `.env`.
-
-1. Complete at least one crawl to generate a result Excel.
-2. Open the **"口播提取"** (Transcript Extraction) tab.
-3. Optionally specify sheet names, a processing limit, or a request interval.
-4. Click **"开始提取口播"** (Start Extraction).
-
-Records that already have transcripts are skipped by default. Check **"覆盖已有口播"** (Overwrite) to re-extract.
-
-## Export
-
-Click **"下载 Excel"** (Download Excel) in the header bar to export the result file to any location.
-
-## FAQ
-
-### Chrome or Edge not detected?
-
-Make sure Google Chrome or Microsoft Edge is installed. If they are but detection still fails, click the browser status button to download Chromium instead.
-
-### Chromium download fails?
-
-Check your network connection, disk space, and proxy settings, then retry.
-
-### Can't start crawling?
-
-Confirm the "Browser Setup" card shows a ready status, and that the "Crawler Cookie" card shows a valid login.
-
-### Transcript extraction fails?
-
-Re-copy your full cookie from `www.douyin.com` and save it again. Cookies may expire due to logout, session expiry, or account changes.
-
-### Windows or macOS blocks the app?
-
-The packages are not code-signed. Only continue when you downloaded the zip from this repository's Release or Actions artifact. On macOS, Control-click the app, choose **Open**, and then confirm.
-
-## Privacy & Security
-
-- Login state and cookies are stored exclusively on your local machine.
-- Never share or upload cookies, QR codes, result Excel files, or logs containing personal data.
-- Ensure your usage complies with the relevant platform's terms of service.
-
-## Running from Source
-
-If you need to run on macOS or Linux, or prefer to work with the source directly:
-
-```bash
-# Prerequisites: Python 3.12+, uv
 git clone <repo-url>
 cd crael4i-demo
 uv sync
+cp .env.example .env
 uv run douhot-gui
 ```
 
-The `uv run douhot-crawl` and `uv run douhot-login` CLI entry points are also available.
+The `.env` file may contain private endpoints and secrets and is ignored by Git.
 
-## License
+## Usage
 
-This project is for personal use and educational purposes only.
+### Desktop GUI
+
+The desktop app exposes two main workflows:
+
+- **Trending Crawl**: choose a keyword, ranking type, and time range; progress is written to the log and records are saved incrementally.
+- **Transcript Extraction**: select sheets or a processing limit, then fill missing transcript cells. Existing transcripts are preserved unless overwrite is enabled.
+
+Use **Download Excel** to export the current workbook. A safe stop completes the current record before saving.
+
+### CLI
+
+```bash
+# Log in and persist the Douhot browser profile
+uv run douhot-login
+
+# Crawl a keyword
+uv run douhot-crawl "美容" \
+  --result-type "视频总榜" \
+  --time-range "近7天"
+
+# Add transcripts to the saved workbook
+uv run douhot-analyze --limit 20
+```
+
+Run any command with `--help` for all options. `python -m douhot_crawler` is equivalent to `douhot-crawl`.
+
+### Transcript service
+
+Transcript extraction requires a private API endpoint:
+
+```dotenv
+EXTRACT_API_URL=http://your-api-host:28600/api/v1/videos/extract
+```
+
+In the desktop package, place `.env` beside the executable/app bundle. In a source checkout, keep it in the project root. The GUI stores the Douyin cookie in the platform-specific application data directory; never commit or share it.
+
+### MCP service
+
+Configure at least an authentication token and a download-signing secret:
+
+```bash
+cp .env.example .env
+# Edit DOUHOT_MCP_TOKEN, DOUHOT_DOWNLOAD_SECRET, and EXTRACT_API_URL
+uv run douhot-mcp
+```
+
+The default endpoint is `http://127.0.0.1:8765/mcp` and requires `Authorization: Bearer <DOUHOT_MCP_TOKEN>`. The service provides health, QR login, crawl, analysis, job status/wait/cancel, video listing, single-transcript extraction, and signed downloads. Data is isolated by a hash of the trusted `user_id`; signed download links expire after 15 minutes.
+
+Relevant environment variables:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DOUHOT_MCP_TOKEN` | required | Bearer token for MCP requests |
+| `DOUHOT_MCP_HOST` | `127.0.0.1` | Bind address |
+| `DOUHOT_MCP_PORT` | `8765` | Bind port |
+| `DOUHOT_PUBLIC_URL` | `http://127.0.0.1:8765` | Base URL used in signed links |
+| `DOUHOT_DOWNLOAD_SECRET` | required for deployment | HMAC secret for downloads |
+| `DOUHOT_DATA_ROOT` | platform app-data directory | MCP jobs, profiles, and workbooks |
+| `DOUHOT_LOGIN_TIMEOUT_SECONDS` | `300` | QR-login timeout |
+| `DOUHOT_COOKIE_SOURCE` | project `cookie.config` | Optional initial transcript-cookie source |
+
+Do not expose the service publicly with placeholder secrets. Put TLS and any additional access controls in front of it when binding beyond localhost.
+
+## Architecture
+
+The package is organized by responsibility. Dependencies point inward toward `core`; external entry points live in `interfaces` and `ui`.
+
+```text
+crael4i-demo/
+├── douhot_crawler/
+│   ├── core/             # Configuration, shared models, Excel persistence
+│   ├── browser/          # Browser discovery, Playwright patch, login, cookies
+│   ├── crawling/         # Page actions, collection, crawl orchestration
+│   ├── transcript/       # Transcript API client and cookie management
+│   ├── services/         # Multi-user job lifecycle and signed downloads
+│   ├── interfaces/       # Crawl/login CLI and Streamable HTTP MCP
+│   ├── ui/               # Qt desktop app, settings, and bundled resources
+│   └── __main__.py       # `python -m douhot_crawler`
+├── tests/                # Unit and async service tests
+├── scripts/              # GUI launcher and PyInstaller build tooling
+├── .github/workflows/    # Test, package, and release automation
+└── pyproject.toml        # Package metadata, dependencies, entry points
+```
+
+Runtime flow:
+
+```text
+GUI / CLI / MCP
+       │
+       ├── crawling ── browser automation ── Douhot
+       │       └── core storage ── Excel
+       └── transcript ── private extraction API
+
+MCP ── services/jobs ── per-user profiles, jobs, Excel, signed downloads
+```
+
+## Local Data
+
+By default, generated data is kept outside the source tree:
+
+| Platform | Data directory |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%/DouHotCrawler` |
+| macOS | `~/Library/Application Support/DouHotCrawler` |
+| Linux | `${XDG_DATA_HOME:-~/.local/share}/DouHotCrawler` |
+
+The crawler browser profile remains under `~/.crawl4ai/profiles/douhot`. Do not upload profiles, cookies, workbooks, QR codes, or logs containing personal data.
+
+## Development
+
+```bash
+# Install runtime and development dependencies
+uv sync
+
+# Run the full test suite
+uv run pytest -q
+
+# Build a native bundle for the current OS/architecture
+uv sync --group build
+bash scripts/build_package.sh
+```
+
+The build output is written to `dist/`. See [CONTRIBUTING.md](CONTRIBUTING.md) for conventions and pull-request guidance.
+
+## License and Responsible Use
+
+This project is intended for personal study and authorized data collection. You are responsible for complying with platform terms, applicable law, account permissions, and data-protection requirements.
