@@ -1,10 +1,40 @@
 from __future__ import annotations
 
 import argparse
+from io import BytesIO
+from urllib.error import HTTPError
 
+import pytest
 from openpyxl import Workbook
 
 from douhot_crawler.transcript import analyzer
+
+
+def test_extract_transcript_includes_safe_http_error_detail(monkeypatch) -> None:
+    error = HTTPError(
+        "https://example.test/extract",
+        400,
+        "bad request",
+        {},
+        BytesIO(b'{"detail":"cookie sessionid=secret is invalid"}'),
+    )
+    def raise_error(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(analyzer, "urlopen", raise_error)
+
+    with pytest.raises(RuntimeError) as caught:
+        analyzer.extract_transcript(
+            "https://www.douyin.com/video/1",
+            "sessionid=secret",
+            "",
+            1.0,
+            api_url="https://example.test/extract",
+        )
+
+    assert "HTTP 400" in str(caught.value)
+    assert "[REDACTED]" in str(caught.value)
+    assert "sessionid=secret" not in str(caught.value)
 
 
 def test_analyze_logs_running_and_final_success_counts(

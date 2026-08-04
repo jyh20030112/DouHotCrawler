@@ -2,7 +2,7 @@
 
 [中文文档](README_zh.md) | English
 
-DouHotCrawler collects keyword-based trending video data from Douhot (热点宝), stores results incrementally in Excel, and can enrich saved videos with transcript text. It provides a Qt desktop app, command-line tools, and a Streamable HTTP MCP service backed by the same application modules.
+DouHotCrawler collects keyword-based trending video data from Douhot (热点宝), stores results incrementally in Excel, and can enrich saved videos with transcript text. It provides a Qt desktop app, command-line tools, a FastAPI task service, and a Streamable HTTP MCP service backed by the same application modules.
 
 > This project automates a third-party website. Page changes, account state, rate limits, or platform policy may affect it. Use it only with accounts and data you are authorized to access.
 
@@ -14,6 +14,7 @@ DouHotCrawler collects keyword-based trending video data from Douhot (热点宝)
 - Extract transcripts through a separately configured private API.
 - Inspect crawler and transcript-cookie status without logging cookie values.
 - Run through a desktop GUI, CLI, or authenticated MCP endpoint.
+- Run crawl, analysis, and end-to-end jobs through a durable single-worker FastAPI queue with safe pause/resume.
 - Package native Windows, macOS, and Linux desktop bundles with PyInstaller.
 
 ## Requirements
@@ -118,6 +119,24 @@ Relevant environment variables:
 
 Do not expose the service publicly with placeholder secrets. Put TLS and any additional access controls in front of it when binding beyond localhost.
 
+### FastAPI task service
+
+Copy `.env.example`, configure the full external-service URLs, hotspot `openId`, and an absolute `DOUHOT_API_DATA_ROOT`, then run:
+
+```bash
+uv sync
+uv run douhot-api
+```
+
+The unauthenticated service defaults to `127.0.0.1:8000` with exactly one Uvicorn worker. OpenAPI documentation is available at `/docs`. Its `/api/v1` routes provide health and keyword lookup plus crawl, transcript-analysis, pipeline, pause, resume, and task-status operations. Jobs use a persistent global FIFO queue. Pipeline jobs process keywords sequentially as crawl → transcript → upload, send eligible rows in batches of 20, and can resume from SQLite checkpoints. Cookies are fetched immediately before each relevant phase and are never persisted by the API.
+
+Run the daily launcher from cron at 03:00 Shanghai time; it submits a pipeline and exits immediately. An existing active or paused pipeline is reused.
+
+```cron
+CRON_TZ=Asia/Shanghai
+0 3 * * * cd /absolute/path/to/crael4i-demo && /absolute/path/to/uv run douhot-daily >> /var/log/douhot-daily.log 2>&1
+```
+
 ## Architecture
 
 The package is organized by responsibility. Dependencies point inward toward `core`; external entry points live in `interfaces` and `ui`.
@@ -129,6 +148,7 @@ crael4i-demo/
 │   ├── browser/          # Browser discovery, Playwright patch, login, cookies
 │   ├── crawling/         # Page actions, collection, crawl orchestration
 │   ├── transcript/       # Transcript API client and cookie management
+│   ├── api/              # FastAPI, SQLite FIFO, pipeline, external clients
 │   ├── services/         # Multi-user job lifecycle and signed downloads
 │   ├── interfaces/       # Crawl/login CLI and Streamable HTTP MCP
 │   ├── ui/               # Qt desktop app, settings, and bundled resources
@@ -149,6 +169,8 @@ GUI / CLI / MCP
        └── transcript ── private extraction API
 
 MCP ── services/jobs ── per-user profiles, jobs, Excel, signed downloads
+
+FastAPI ── api/service ── SQLite FIFO ── per keyword: crawl → transcript → upload
 ```
 
 ## Local Data

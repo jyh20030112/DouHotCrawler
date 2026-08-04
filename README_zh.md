@@ -2,7 +2,7 @@
 
 中文 | [English](README.md)
 
-DouHotCrawler 用于按关键词采集热点宝（Douhot）榜单视频，将结果增量保存到 Excel，并可通过独立配置的私有接口补全视频口播。桌面 GUI、命令行和 Streamable HTTP MCP 服务共用同一套核心模块。
+DouHotCrawler 用于按关键词采集热点宝（Douhot）榜单视频，将结果增量保存到 Excel，并可通过独立配置的私有接口补全视频口播。桌面 GUI、命令行、FastAPI 任务服务和 Streamable HTTP MCP 服务共用同一套核心模块。
 
 > 本项目会自动操作第三方网站，页面变更、账号状态、访问频率限制或平台规则都可能影响运行。请仅采集你有权访问和处理的数据。
 
@@ -14,6 +14,7 @@ DouHotCrawler 用于按关键词采集热点宝（Douhot）榜单视频，将结
 - 通过私有提取接口为已有记录补充口播文本。
 - 安全检查爬虫登录态和口播 Cookie 状态，不输出 Cookie 内容。
 - 提供桌面 GUI、CLI 和带 Bearer 认证的 MCP 服务。
+- 提供无认证的 FastAPI FIFO 任务队列，支持爬取、口播、完整流水线及安全暂停/恢复。
 - 使用 PyInstaller 构建 Windows、macOS 和 Linux 原生桌面包。
 
 ## 环境要求
@@ -114,6 +115,39 @@ uv run douhot-mcp
 
 不要使用示例密钥将服务暴露到公网；监听非本机地址时，应在服务前增加 TLS 和必要的访问控制。
 
+### FastAPI 任务服务
+
+先复制 `.env.example`，填写三个外部接口、口播接口、热点 `openId` 和 API 数据目录。`DOUHOT_API_DATA_ROOT` 应使用服务器上的完整路径。配置缺失时服务会拒绝启动。
+
+```bash
+uv sync
+uv run douhot-api
+```
+
+默认监听 `127.0.0.1:8000`，固定为单 Uvicorn worker，接口本身不做身份认证。交互文档位于 `http://127.0.0.1:8000/docs`。任务采用 SQLite 持久化的全局 FIFO 队列，同一时间只运行一个爬取、口播或流水线任务；Cookie 每个阶段从配置接口重新读取，只保存在内存中。
+
+主要接口：
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| `GET` | `/api/v1/health` | 数据库、worker 和浏览器状态 |
+| `GET` | `/api/v1/keywords` | 返回 `{"key_word": [...]}` 热点关键词 |
+| `POST` | `/api/v1/tasks/crawl` | 创建单关键词爬取任务，默认最多 500 条 |
+| `POST` | `/api/v1/tasks/analyze` | 为已成功的爬取任务补充口播 |
+| `POST` | `/api/v1/tasks/pipeline` | 顺序执行关键词获取、爬取、口播和发送 |
+| `POST` | `/api/v1/tasks/{task_id}/pause` | 在当前安全检查点暂停 |
+| `POST` | `/api/v1/tasks/{task_id}/resume` | 恢复 paused 任务 |
+| `GET` | `/api/v1/tasks/{task_id}` | 查询状态、进度、告警与结果文件信息 |
+
+不传 `keywords` 时流水线读取全部热点关键词（默认 30 个）；也可传入不超过 30 个关键词覆盖。发送阶段跳过缺少视频名称、URL、博主或口播的行，每 20 条一批；粉丝数会转换为整数，无法解析时按 `0` 发送并记录告警。Excel、任务日志保留 3 天，SQLite 元数据保留 7 天，运行中或暂停中的任务不会清理。
+
+每天上海时区凌晨 3 点可通过 cron 调用轻量脚本。它只创建任务、输出 `task_id` 后退出；已有 active/paused 流水线时服务返回原任务，不重复创建。
+
+```cron
+CRON_TZ=Asia/Shanghai
+0 3 * * * cd /absolute/path/to/crael4i-demo && /absolute/path/to/uv run douhot-daily >> /var/log/douhot-daily.log 2>&1
+```
+
 ## 项目架构
 
 源码按职责拆分，依赖方向收敛到 `core`，GUI 和外部协议入口位于边缘层：
@@ -125,6 +159,7 @@ crael4i-demo/
 │   ├── browser/          # 浏览器检测、Playwright 补丁、登录、Cookie
 │   ├── crawling/         # 页面交互、内容采集、爬取编排
 │   ├── transcript/       # 口播接口客户端与 Cookie 管理
+│   ├── api/              # FastAPI、SQLite FIFO、流水线与外部接口客户端
 │   ├── services/         # 多用户任务生命周期与签名下载
 │   ├── interfaces/       # 爬取/登录 CLI 与 MCP
 │   ├── ui/               # Qt 桌面应用、设置和资源
@@ -145,6 +180,8 @@ GUI / CLI / MCP
        └── transcript ── 私有口播提取接口
 
 MCP ── services/jobs ── 用户隔离的 Profile、任务、Excel、签名下载
+
+FastAPI ── api/service ── SQLite FIFO ── 每关键词：爬取 → 口播 → 20 条/批发送
 ```
 
 ## 本地数据位置
