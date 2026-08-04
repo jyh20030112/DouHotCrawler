@@ -117,7 +117,7 @@ uv run douhot-mcp
 
 ### FastAPI 任务服务
 
-先复制 `.env.example`，填写三个外部接口、口播接口、热点 `openId` 和 API 数据目录。`DOUHOT_API_DATA_ROOT` 应使用服务器上的完整路径。配置缺失时服务会拒绝启动。
+先复制 `.env.example`，填写三个外部接口、口播接口、热点 `openId` 和 API 数据目录。默认使用 `DOUHOT_API_DATA_ROOT=data/api`，相对路径以服务启动时的工作目录为基准；本机和服务器均可复用，不需要写死用户名。配置缺失时服务会拒绝启动。
 
 ```bash
 uv sync

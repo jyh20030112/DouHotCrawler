@@ -121,7 +121,7 @@ Do not expose the service publicly with placeholder secrets. Put TLS and any add
 
 ### FastAPI task service
 
-Copy `.env.example`, configure the full external-service URLs, hotspot `openId`, and an absolute `DOUHOT_API_DATA_ROOT`, then run:
+Copy `.env.example` and configure the full external-service URLs and hotspot `openId`. `DOUHOT_API_DATA_ROOT=data/api` is resolved from the service working directory, so it is portable between local and server deployments.
 
 ```bash
 uv sync
