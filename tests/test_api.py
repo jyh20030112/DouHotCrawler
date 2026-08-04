@@ -15,7 +15,7 @@ from douhot_crawler.api import daily
 from douhot_crawler.api.models import PipelineTaskRequest, TaskKind, TaskStatus
 from douhot_crawler.api.service import ApiTaskService, parse_follower_count
 from douhot_crawler.api.store import ApiTaskStore
-from douhot_crawler.api.errors import TaskPaused
+from douhot_crawler.api.errors import ExternalServiceError, TaskPaused
 from douhot_crawler.core.config import RESULT_HEADERS
 from douhot_crawler.core.storage import atomic_workbook_save
 
@@ -103,6 +103,18 @@ async def test_external_client_extracts_unique_keywords_and_cookie(tmp_path: Pat
         ("/hotspots", {"openId": "test-open-id", "size": 30}),
         ("/cookies", {"type": 0}),
     ]
+    await http_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_external_client_preserves_hotspot_business_error(tmp_path: Path) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"code": 400, "message": "openId无效"})
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = ExternalApiClient(settings(tmp_path), client=http_client)
+    with pytest.raises(ExternalServiceError, match="openId无效"):
+        await client.fetch_keywords()
     await http_client.aclose()
 
 

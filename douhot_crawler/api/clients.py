@@ -24,14 +24,14 @@ class _HotspotResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
     code: int
     message: str = ""
-    data: _HotspotData
+    data: _HotspotData | None = None
 
 
 class _CookieResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
     code: int
     message: str = ""
-    cookie: str
+    cookie: str | None = None
 
 
 class ExternalApiClient:
@@ -122,6 +122,8 @@ class ExternalApiClient:
             raise ExternalServiceError(
                 "热点关键词接口", response.message or f"业务状态码 {response.code}"
             )
+        if response.data is None:
+            raise ExternalServiceError("热点关键词接口", "成功响应缺少 data")
         keywords = list(
             dict.fromkeys(
                 record.title.strip()
@@ -148,7 +150,7 @@ class ExternalApiClient:
             raise ExternalServiceError(
                 "Cookie 配置接口", response.message or f"业务状态码 {response.code}"
             )
-        cookie = response.cookie.strip()
+        cookie = (response.cookie or "").strip()
         if not cookie:
             raise ExternalServiceError("Cookie 配置接口", "返回了空 Cookie")
         return cookie
