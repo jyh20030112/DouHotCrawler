@@ -6,11 +6,16 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "crawl4ai>=0.9.2",
+    "fastapi>=0.116,<1",
     "fastmcp>=3.4.5",
+    "filelock>=3.18,<4",
+    "httpx>=0.28,<1",
     "mcp>=1.12,<2",
     "openpyxl>=3.1.5",
+    "pydantic-settings>=2.10,<3",
     "pyside6>=6.11.1",
     "pyside6-fluent-widgets>=1.11.2",
+    "uvicorn>=0.35,<1",
 ]
 
 [project.scripts]
@@ -19,6 +24,8 @@ douhot-analyze = "douhot_crawler.transcript.analyzer:main"
 douhot-gui = "douhot_crawler.ui.app:main"
 douhot-login = "douhot_crawler.interfaces.login_cli:main"
 douhot-mcp = "douhot_crawler.interfaces.mcp:main"
+douhot-api = "douhot_crawler.api.app:main"
+douhot-daily = "douhot_crawler.api.daily:main"
 
 [build-system]
 requires = ["hatchling"]

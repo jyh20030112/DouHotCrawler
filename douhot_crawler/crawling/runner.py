@@ -1,6 +1,7 @@
 """爬虫运行编排。"""
 
 import asyncio
+import inspect
 import select
 import signal
 import sys
@@ -57,6 +58,8 @@ async def run(
     profile_path=None,
     excel_path=None,
     max_results: int | None = None,
+    browser_cookie: str | None = None,
+    progress_callback: Callable[[dict], object] | None = None,
 ) -> dict:
     """执行一次完整的关键词搜索、采集和结果入库。"""
 
@@ -66,7 +69,7 @@ async def run(
         raise ValueError("max_results 必须大于 0")
 
     profile_path = (profile_path or PROFILE_PATH).resolve()
-    if not profile_path.exists():
+    if not browser_cookie and not profile_path.exists():
         raise FileNotFoundError(
             f"没有找到 douhot Profile：{profile_path}\n"
             "请先运行 `uv run crwl profiles`，并确认已经按 q 保存。"
@@ -106,16 +109,25 @@ async def run(
     if known_video_identities:
         print(f"已加载 {len(known_video_identities)} 条已有视频，将跳过详情页")
 
-    browser_config = BrowserConfig(
-        browser_type="chromium",
-        headless=options.headless,
-        use_managed_browser=True,
-        use_persistent_context=True,
-        user_data_dir=str(profile_path),
-        viewport_width=1440,
-        viewport_height=1000,
-        verbose=True,
-    )
+    browser_options = {
+        "browser_type": "chromium",
+        "headless": options.headless,
+        "viewport_width": 1440,
+        "viewport_height": 1000,
+        "verbose": True,
+    }
+    if browser_cookie:
+        browser_options.update(
+            use_managed_browser=False,
+            use_persistent_context=False,
+        )
+    else:
+        browser_options.update(
+            use_managed_browser=True,
+            use_persistent_context=True,
+            user_data_dir=str(profile_path),
+        )
+    browser_config = BrowserConfig(**browser_options)
     run_config = CrawlerRunConfig(
         cache_mode=CacheMode.BYPASS,
         page_timeout=120_000,
@@ -144,6 +156,38 @@ async def run(
         added_count += page_added
         skipped_in_storage += page_skipped
         print(f"第 {page_number} 页已写入 Excel：新增 {page_added} 条")
+        if progress_callback:
+            result = progress_callback(
+                {
+                    "page": page_number,
+                    "current": added_count,
+                    "added": added_count,
+                    "skipped": skipped_in_list + skipped_in_storage,
+                    "keyword": options.keyword,
+                }
+            )
+            if inspect.isawaitable(result):
+                await result
+
+    async def before_goto(page: Page, context, **kwargs) -> Page:
+        """API 模式下把内存 Cookie 注入临时浏览器上下文。"""
+
+        if browser_cookie:
+            cookies = []
+            for item in browser_cookie.split(";"):
+                name, separator, value = item.strip().partition("=")
+                if separator and name:
+                    cookies.append(
+                        {
+                            "name": name,
+                            "value": value,
+                            "url": "https://douhot.douyin.com/",
+                        }
+                    )
+            if not cookies:
+                raise ValueError("DouHot Cookie 中没有可注入的键值")
+            await context.add_cookies(cookies)
+        return page
 
     async def after_goto(
         page: Page,
@@ -174,6 +218,8 @@ async def run(
             print("已安全停止采集")
         return page
 
+    if browser_cookie:
+        crawler.crawler_strategy.set_hook("before_goto", before_goto)
     crawler.crawler_strategy.set_hook("after_goto", after_goto)
 
     try:
@@ -192,6 +238,7 @@ async def run(
             "added_count": added_count,
             "skipped_count": skipped_in_list + skipped_in_storage,
             "sheet": excel_sheet_name(options.keyword),
+            "stopped": stop_event.is_set(),
         }
     finally:
         if stop_task:

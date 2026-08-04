@@ -1,6 +1,8 @@
 """增量 Excel 结果库。"""
 
+import os
 import re
+import tempfile
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
@@ -8,6 +10,22 @@ from openpyxl.styles import Font
 
 from .config import DOUYIN_VIDEO_URL_PREFIX, RESULT_HEADERS
 from .models import VideoIdentity, VideoRecord, video_identity
+
+
+def atomic_workbook_save(workbook, path: Path) -> None:
+    """将工作簿先写入同目录临时文件，再原子替换目标文件。"""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=f".{path.stem}.", suffix=path.suffix or ".xlsx", dir=path.parent
+    )
+    os.close(descriptor)
+    temporary_path = Path(temporary)
+    try:
+        workbook.save(temporary_path)
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 def excel_sheet_name(keyword: str) -> str:
@@ -173,7 +191,7 @@ def write_result_excel(
 
     format_worksheet(worksheet)
     try:
-        workbook.save(excel_path)
+        atomic_workbook_save(workbook, excel_path)
     finally:
         workbook.close()
     return added_count, skipped_count

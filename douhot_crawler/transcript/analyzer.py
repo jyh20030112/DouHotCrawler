@@ -18,6 +18,7 @@ from douhot_crawler.core.config import (
     EXTRACT_API_URL,
     RESULT_EXCEL_PATH,
 )
+from douhot_crawler.core.storage import atomic_workbook_save
 
 DEFAULT_EXCEL_PATH = RESULT_EXCEL_PATH
 DEFAULT_COOKIE_PATH = COOKIE_CONFIG_PATH
@@ -95,10 +96,12 @@ def extract_transcript(
     cookie: str,
     callback_url: str,
     timeout: float,
+    api_url: str | None = None,
 ) -> str:
     """请求接口并返回视频口播文本。"""
 
-    if not EXTRACT_API_URL:
+    endpoint = api_url or EXTRACT_API_URL
+    if not endpoint:
         raise RuntimeError(
             "未配置 EXTRACT_API_URL。请复制 .env.example 为 .env，并填写口播提取接口地址。"
         )
@@ -112,19 +115,37 @@ def extract_transcript(
         ensure_ascii=False,
     ).encode("utf-8")
     request = Request(
-        EXTRACT_API_URL,
+        endpoint,
         data=payload,
         headers={"accept": "application/json", "Content-Type": "application/json"},
         method="POST",
     )
 
-    try:
-        with urlopen(request, timeout=timeout) as response:
-            result: Any = json.load(response)
-    except HTTPError as exc:
-        raise RuntimeError(f"接口返回 HTTP {exc.code}") from exc
-    except URLError as exc:
-        raise RuntimeError(f"接口请求失败：{exc.reason}") from exc
+    delays = (0.0, 2.0, 5.0, 10.0)
+    result: Any = None
+    for attempt, delay in enumerate(delays):
+        if delay:
+            time.sleep(delay)
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                result = json.load(response)
+            break
+        except HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")[:500]
+            try:
+                parsed = json.loads(body)
+                detail = parsed.get("detail") or parsed.get("message") or body
+            except (json.JSONDecodeError, AttributeError):
+                detail = body
+            safe_detail = str(detail).replace(cookie, "[REDACTED]")
+            if (exc.code == 429 or exc.code >= 500) and attempt < len(delays) - 1:
+                continue
+            suffix = f"：{safe_detail}" if safe_detail else ""
+            raise RuntimeError(f"接口返回 HTTP {exc.code}{suffix}") from exc
+        except URLError as exc:
+            if attempt < len(delays) - 1:
+                continue
+            raise RuntimeError(f"接口请求失败：{exc.reason}") from exc
 
     if not isinstance(result, dict):
         raise RuntimeError("接口返回不是 JSON 对象")
@@ -181,7 +202,10 @@ def analyze_excel(
     if not args.excel.is_file():
         raise FileNotFoundError(f"没有找到结果 Excel：{args.excel}")
 
-    cookie = read_cookie(args.cookie_file)
+    cookie = getattr(args, "cookie", None) or read_cookie(args.cookie_file)
+    extractor = getattr(args, "extractor", extract_transcript)
+    progress_callback = getattr(args, "progress_callback", None)
+    api_url = getattr(args, "api_url", None)
     workbook = load_workbook(args.excel)
     success_count = 0
     skipped_count = 0
@@ -199,7 +223,7 @@ def analyze_excel(
             had_transcript_column = TRANSCRIPT_HEADER in headers
             text_column = transcript_column(worksheet)
             if not had_transcript_column:
-                workbook.save(args.excel)
+                atomic_workbook_save(workbook, args.excel)
             print(f"\n开始处理 Sheet：{worksheet.title}")
 
             for row_number in range(2, worksheet.max_row + 1):
@@ -224,11 +248,12 @@ def analyze_excel(
 
                 processed_count += 1
                 try:
-                    transcript = extract_transcript(
+                    transcript = extractor(
                         share_link=share_link.strip(),
                         cookie=cookie,
                         callback_url=args.callback_url,
                         timeout=args.timeout,
+                        **({"api_url": api_url} if api_url else {}),
                     )
                     cell = worksheet.cell(row=row_number, column=text_column)
                     cell.value = transcript
@@ -236,7 +261,7 @@ def analyze_excel(
                     alignment.wrap_text = True
                     alignment.vertical = "top"
                     cell.alignment = alignment
-                    workbook.save(args.excel)
+                    atomic_workbook_save(workbook, args.excel)
                     success_count += 1
                     print(
                         f"  第 {row_number} 行口播已写入"
@@ -245,6 +270,18 @@ def analyze_excel(
                 except Exception as exc:
                     failed_count += 1
                     print(f"  第 {row_number} 行提取失败：{exc}", file=sys.stderr)
+
+                if progress_callback:
+                    progress_callback(
+                        {
+                            "sheet": worksheet.title,
+                            "row": row_number,
+                            "current": processed_count,
+                            "succeeded": success_count,
+                            "skipped": skipped_count,
+                            "failed": failed_count,
+                        }
+                    )
 
                 if args.delay:
                     time.sleep(args.delay)

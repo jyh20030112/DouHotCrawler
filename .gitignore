@@ -11,6 +11,9 @@ wheels/
 
 result
 
+# FastAPI runtime data (SQLite, workbooks, and task logs)
+data/
+
 cookie.config
 
 # Local runtime configuration (may contain private service addresses)
