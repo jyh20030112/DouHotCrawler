@@ -107,6 +107,20 @@ async def test_external_client_extracts_unique_keywords_and_cookie(tmp_path: Pat
 
 
 @pytest.mark.asyncio
+async def test_external_client_accepts_cookie_in_data_field(tmp_path: Path) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"code": 200, "message": "操作成功", "data": "sid=from-data"},
+        )
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = ExternalApiClient(settings(tmp_path), client=http_client)
+    assert await client.fetch_cookie(0) == "sid=from-data"
+    await http_client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_external_client_preserves_hotspot_business_error(tmp_path: Path) -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"code": 400, "message": "openId无效"})

@@ -32,6 +32,7 @@ class _CookieResponse(BaseModel):
     code: int
     message: str = ""
     cookie: str | None = None
+    data: str | None = None
 
 
 class ExternalApiClient:
@@ -150,7 +151,7 @@ class ExternalApiClient:
             raise ExternalServiceError(
                 "Cookie 配置接口", response.message or f"业务状态码 {response.code}"
             )
-        cookie = (response.cookie or "").strip()
+        cookie = (response.cookie or response.data or "").strip()
         if not cookie:
             raise ExternalServiceError("Cookie 配置接口", "返回了空 Cookie")
         return cookie
