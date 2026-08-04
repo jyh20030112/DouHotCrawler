@@ -130,12 +130,14 @@ uv run douhot-api
 
 The unauthenticated service defaults to `127.0.0.1:8000` with exactly one Uvicorn worker. OpenAPI documentation is available at `/docs`. Its `/api/v1` routes provide health and keyword lookup plus crawl, transcript-analysis, standalone existing-Excel upload, pipeline, pause, resume, and task-status operations. Jobs use a persistent global FIFO queue. Pipeline jobs process keywords sequentially as crawl → transcript → upload, default to 3 videos per keyword (`DOUHOT_MAX_VIDEOS_PER_KEYWORD`, range 1–500), send eligible rows in batches of 20, and can resume from SQLite checkpoints. Cookies are fetched immediately before each relevant phase and are never persisted by the API.
 
-Run the daily launcher from cron at 03:00 Shanghai time; it submits a pipeline and exits immediately. An existing active or paused pipeline is reused.
+Daily scheduling is built into the FastAPI process, so cron is not required. Configure it in `.env`; the time is interpreted in `Asia/Shanghai`:
 
-```cron
-CRON_TZ=Asia/Shanghai
-0 3 * * * cd /absolute/path/to/crael4i-demo && /absolute/path/to/uv run douhot-daily >> /var/log/douhot-daily.log 2>&1
+```dotenv
+DOUHOT_DAILY_ENABLED=true
+DOUHOT_DAILY_TIME=03:00
 ```
+
+Keep `uv run douhot-api` running. At the configured time it submits a pipeline, reusing any existing active or paused pipeline instead of creating a duplicate. Restart FastAPI after changing the schedule. `uv run douhot-daily` remains available as an immediate manual trigger.
 
 ## Architecture
 

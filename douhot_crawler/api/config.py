@@ -51,6 +51,14 @@ class ApiSettings(BaseSettings):
         default="http://127.0.0.1:8000",
         validation_alias="DOUHOT_DAILY_API_URL",
     )
+    daily_enabled: bool = Field(
+        default=True,
+        validation_alias="DOUHOT_DAILY_ENABLED",
+    )
+    daily_time: str = Field(
+        default="03:00",
+        validation_alias="DOUHOT_DAILY_TIME",
+    )
 
     connect_timeout_seconds: Annotated[float, Field(gt=0)] = 10.0
     read_timeout_seconds: Annotated[float, Field(gt=0)] = 90.0
@@ -66,6 +74,25 @@ class ApiSettings(BaseSettings):
     @classmethod
     def resolve_data_root(cls, value: Path) -> Path:
         return value.expanduser().resolve()
+
+    @field_validator("daily_time")
+    @classmethod
+    def validate_daily_time(cls, value: str) -> str:
+        parts = value.strip().split(":")
+        if (
+            len(parts) != 2
+            or not all(len(part) == 2 and part.isdigit() for part in parts)
+        ):
+            raise ValueError("DOUHOT_DAILY_TIME 必须使用 HH:MM 格式")
+        hour, minute = (int(part) for part in parts)
+        if not 0 <= hour <= 23 or not 0 <= minute <= 59:
+            raise ValueError("DOUHOT_DAILY_TIME 必须是有效的 24 小时时间")
+        return f"{hour:02d}:{minute:02d}"
+
+    @property
+    def daily_hour_minute(self) -> tuple[int, int]:
+        hour, minute = self.daily_time.split(":")
+        return int(hour), int(minute)
 
     @property
     def is_server_platform(self) -> bool:

@@ -5,10 +5,12 @@ import asyncio
 import hashlib
 import json
 import re
-from datetime import datetime
+from contextlib import suppress
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from openpyxl import load_workbook
 
@@ -45,6 +47,7 @@ UPLOAD_HEADERS = {
     "highPraiseComment": "高赞评论",
     "videoOral": "视频口播",
 }
+SHANGHAI_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
 def parse_follower_count(value: object) -> tuple[int, bool]:
@@ -87,6 +90,8 @@ class ApiTaskService:
         self._wake = asyncio.Event()
         self._closing = False
         self._worker: asyncio.Task[None] | None = None
+        self._scheduler: asyncio.Task[None] | None = None
+        self._next_daily_run: datetime | None = None
         self.browser_ok, self.browser_message = chromium_status()
 
     async def start(self) -> None:
@@ -94,14 +99,48 @@ class ApiTaskService:
         if self._worker is None:
             self._worker = asyncio.create_task(self._worker_loop(), name="douhot-api-worker")
             self._wake.set()
+        if self.settings.daily_enabled and self._scheduler is None:
+            self._scheduler = asyncio.create_task(
+                self._scheduler_loop(), name="douhot-api-daily-scheduler"
+            )
 
     async def close(self) -> None:
         self._closing = True
+        if self._scheduler:
+            self._scheduler.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._scheduler
         self.store.request_worker_shutdown()
         self._wake.set()
         if self._worker:
             await self._worker
         await self.client.close()
+
+    def next_daily_run(self, now: datetime | None = None) -> datetime:
+        current = now or datetime.now(SHANGHAI_TIMEZONE)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=SHANGHAI_TIMEZONE)
+        else:
+            current = current.astimezone(SHANGHAI_TIMEZONE)
+        hour, minute = self.settings.daily_hour_minute
+        target = current.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if target <= current:
+            target += timedelta(days=1)
+        return target
+
+    async def _scheduler_loop(self) -> None:
+        while not self._closing:
+            target = self.next_daily_run()
+            self._next_daily_run = target
+            delay = max((target - datetime.now(SHANGHAI_TIMEZONE)).total_seconds(), 0)
+            await asyncio.sleep(delay)
+            if self._closing:
+                return
+            task, created = self.create_pipeline(PipelineTaskRequest())
+            if created:
+                self._log(task["task_id"], "上海时区每日定时任务已触发")
+            else:
+                self._log(task["task_id"], "已有活动流水线，每日定时任务未重复创建")
 
     def _task_dir(self, task_id: str) -> Path:
         return self.tasks_root / task_id
@@ -636,4 +675,10 @@ class ApiTaskService:
             "browser_ok": self.browser_ok,
             "external_urls_configured": True,
             "scheduler_overlap": self.store.active_pipeline() is not None,
+            "scheduler_enabled": self.settings.daily_enabled,
+            "scheduler_time": self.settings.daily_time,
+            "scheduler_timezone": "Asia/Shanghai",
+            "scheduler_next_run_at": (
+                self._next_daily_run.isoformat() if self._next_daily_run else None
+            ),
         }

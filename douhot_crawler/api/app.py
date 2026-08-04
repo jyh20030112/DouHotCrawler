@@ -42,6 +42,7 @@ DouHotCrawler 的异步任务 API，接口前缀统一为 `/api/v1`。
 - Cookie 在每个阶段从外部配置接口读取，只保存在内存，不写入 SQLite、Excel 或日志。
 - Excel 使用跨进程文件锁与原子替换保存。
 - Excel 和任务日志保留 3 天，终态 SQLite 元数据保留 7 天；活动及暂停任务不会清理。
+- FastAPI 内置每日调度，时间由 `DOUHOT_DAILY_TIME=HH:MM` 配置并按 `Asia/Shanghai` 解释。
 
 ### 任务状态
 
@@ -154,8 +155,8 @@ def create_app(
         tags=["系统"],
         summary="检查 API 运行状态",
         description=(
-            "检查 FIFO worker、SQLite 和浏览器是否可用。该接口不会调用外部 Cookie 服务，"
-            "也不会返回完整外部 URL 或任何 Cookie。"
+            "检查 FIFO worker、SQLite、浏览器和每日调度是否可用，并返回下一次上海时区触发"
+            "时间。该接口不会调用外部 Cookie 服务，也不会返回完整外部 URL 或任何 Cookie。"
         ),
         responses=ERROR_RESPONSES,
     )

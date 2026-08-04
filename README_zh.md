@@ -142,12 +142,14 @@ uv run douhot-api
 
 不传 `keywords` 时流水线读取全部热点关键词（默认 30 个）；也可传入不超过 30 个关键词覆盖。每个关键词默认最多爬取 3 条，可通过 `.env` 中的 `DOUHOT_MAX_VIDEOS_PER_KEYWORD`（1–500）调整，也可由请求的 `limit` / `limit_per_keyword` 临时覆盖。发送阶段跳过缺少视频名称、URL、博主或口播的行，每 20 条一批；粉丝数会转换为整数，无法解析时按 `0` 发送并记录告警。Excel、任务日志保留 3 天，SQLite 元数据保留 7 天，运行中或暂停中的任务不会清理。
 
-每天上海时区凌晨 3 点可通过 cron 调用轻量脚本。它只创建任务、输出 `task_id` 后退出；已有 active/paused 流水线时服务返回原任务，不重复创建。
+每日调度已经内置在 FastAPI 服务中，不需要配置 cron。通过 `.env` 设置是否启用及上海时区触发时间：
 
-```cron
-CRON_TZ=Asia/Shanghai
-0 3 * * * cd /absolute/path/to/crael4i-demo && /absolute/path/to/uv run douhot-daily >> /var/log/douhot-daily.log 2>&1
+```dotenv
+DOUHOT_DAILY_ENABLED=true
+DOUHOT_DAILY_TIME=03:00
 ```
+
+保持 `uv run douhot-api` 常驻即可。到点后服务会创建完整 pipeline；已有 active/paused 流水线时不会重复创建。修改时间后需要重启 FastAPI。`uv run douhot-daily` 保留为不等待计划时间、立即提交一次 pipeline 的手动命令。
 
 ## 项目架构
 

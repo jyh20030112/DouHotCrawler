@@ -419,6 +419,10 @@ class HealthResponse(BaseModel):
                     "browser_ok": True,
                     "external_urls_configured": True,
                     "scheduler_overlap": False,
+                    "scheduler_enabled": True,
+                    "scheduler_time": "03:00",
+                    "scheduler_timezone": "Asia/Shanghai",
+                    "scheduler_next_run_at": "2026-08-05T03:00:00+08:00",
                 }
             ]
         }
@@ -430,6 +434,13 @@ class HealthResponse(BaseModel):
     browser_ok: bool = Field(description="系统 Chrome/Edge 或 Playwright Chromium 是否可用。")
     external_urls_configured: bool = Field(description="外部接口地址是否已配置。")
     scheduler_overlap: bool = Field(description="是否已有 active/paused 流水线任务。")
+    scheduler_enabled: bool = Field(description="FastAPI 内置每日调度是否启用。")
+    scheduler_time: str = Field(description=".env 配置的每日触发时间，格式 HH:MM。")
+    scheduler_timezone: str = Field(description="调度时区，固定为 Asia/Shanghai。")
+    scheduler_next_run_at: datetime | None = Field(
+        default=None,
+        description="服务启动后计算出的下一次触发时间；关闭调度时为 null。",
+    )
 
 
 class ErrorDetail(BaseModel):

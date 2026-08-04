@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
@@ -47,10 +50,53 @@ def test_settings_accepts_single_worker_from_environment(
     monkeypatch.setenv("DOUHOT_API_DATA_ROOT", str(tmp_path))
     monkeypatch.setenv("DOUHOT_API_WORKERS", "1")
     monkeypatch.setenv("DOUHOT_MAX_VIDEOS_PER_KEYWORD", "17")
+    monkeypatch.setenv("DOUHOT_DAILY_ENABLED", "false")
+    monkeypatch.setenv("DOUHOT_DAILY_TIME", "04:30")
 
     configured = ApiSettings()
     assert configured.workers == 1
     assert configured.max_videos_per_keyword == 17
+    assert configured.daily_enabled is False
+    assert configured.daily_time == "04:30"
+
+
+def test_next_daily_run_uses_shanghai_time(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "douhot_crawler.api.service.chromium_status", lambda: (True, "test browser")
+    )
+    configured = settings(tmp_path)
+    configured.daily_time = "03:00"
+    service = ApiTaskService(configured, client=FakeExternalClient())
+    timezone = ZoneInfo("Asia/Shanghai")
+
+    same_day = service.next_daily_run(datetime(2026, 8, 4, 2, 30, tzinfo=timezone))
+    next_day = service.next_daily_run(datetime(2026, 8, 4, 3, 0, tzinfo=timezone))
+
+    assert same_day == datetime(2026, 8, 4, 3, 0, tzinfo=timezone)
+    assert next_day == datetime(2026, 8, 5, 3, 0, tzinfo=timezone)
+
+
+@pytest.mark.asyncio
+async def test_service_starts_builtin_daily_scheduler(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "douhot_crawler.api.service.chromium_status", lambda: (True, "test browser")
+    )
+    configured = settings(tmp_path)
+    configured.daily_enabled = True
+    configured.daily_time = "03:00"
+    service = ApiTaskService(configured, client=FakeExternalClient())
+
+    await service.start()
+    await asyncio.sleep(0)
+    health = service.health()
+    await service.close()
+
+    assert health["scheduler_enabled"] is True
+    assert health["scheduler_time"] == "03:00"
+    assert health["scheduler_timezone"] == "Asia/Shanghai"
+    assert health["scheduler_next_run_at"] is not None
 
 
 def test_task_store_fifo_pause_resume_and_restart_recovery(tmp_path: Path) -> None:
@@ -405,6 +451,10 @@ class FakeRouteService:
             "browser_ok": True,
             "external_urls_configured": True,
             "scheduler_overlap": False,
+            "scheduler_enabled": True,
+            "scheduler_time": "03:00",
+            "scheduler_timezone": "Asia/Shanghai",
+            "scheduler_next_run_at": "2026-08-05T03:00:00+08:00",
         }
 
     async def keywords(self) -> list[str]:
