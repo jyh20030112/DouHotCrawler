@@ -44,7 +44,9 @@ class ApiSettings(BaseSettings):
     port: Annotated[int, Field(ge=1, le=65535)] = Field(
         default=8000, validation_alias="DOUHOT_API_PORT"
     )
-    workers: Literal[1] = Field(default=1, validation_alias="DOUHOT_API_WORKERS")
+    workers: Annotated[int, Field(ge=1, le=1)] = Field(
+        default=1, validation_alias="DOUHOT_API_WORKERS"
+    )
     daily_api_url: AnyHttpUrl = Field(
         default="http://127.0.0.1:8000",
         validation_alias="DOUHOT_DAILY_API_URL",

@@ -31,6 +31,20 @@ def settings(tmp_path: Path) -> ApiSettings:
     )
 
 
+def test_settings_accepts_single_worker_from_environment(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("DOUHOT_HOTSPOT_API_URL", "https://example.test/hotspots")
+    monkeypatch.setenv("DOUHOT_COOKIE_API_URL", "https://example.test/cookies")
+    monkeypatch.setenv("DOUHOT_RANKING_API_URL", "https://example.test/rankings")
+    monkeypatch.setenv("EXTRACT_API_URL", "https://example.test/extract")
+    monkeypatch.setenv("DOUHOT_HOTSPOT_OPEN_ID", "test-open-id")
+    monkeypatch.setenv("DOUHOT_API_DATA_ROOT", str(tmp_path))
+    monkeypatch.setenv("DOUHOT_API_WORKERS", "1")
+
+    assert ApiSettings().workers == 1
+
+
 def test_task_store_fifo_pause_resume_and_restart_recovery(tmp_path: Path) -> None:
     path = tmp_path / "tasks.sqlite3"
     store = ApiTaskStore(path)
