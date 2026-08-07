@@ -66,6 +66,7 @@ async def run(
     max_results: int | None = None,
     browser_cookie: str | None = None,
     progress_callback: Callable[[dict], object] | None = None,
+    storage_keyword: str | None = None,
 ) -> dict:
     """执行一次完整的关键词搜索、采集和结果入库。"""
 
@@ -82,7 +83,8 @@ async def run(
         )
 
     excel_path = (excel_path or RESULT_EXCEL_PATH).resolve()
-    known_video_identities = existing_video_identities(excel_path, options.keyword)
+    sheet_keyword = storage_keyword or options.keyword
+    known_video_identities = existing_video_identities(excel_path, sheet_keyword)
     skipped_in_list = 0
     added_count = 0
     skipped_in_storage = 0
@@ -156,7 +158,7 @@ async def run(
             write_result_excel,
             records,
             excel_path,
-            options.keyword,
+            sheet_keyword,
             options.result_type,
             options.time_range,
             crawled_at,
@@ -236,7 +238,7 @@ async def run(
         if not result.success:
             raise RuntimeError(result.error_message or "爬取失败")
 
-        print(f"\n总结果 Excel：{excel_path}（Sheet：{excel_sheet_name(options.keyword)}）")
+        print(f"\n总结果 Excel：{excel_path}（Sheet：{excel_sheet_name(sheet_keyword)}）")
         print(
             f"本次新增 {added_count} 条，"
             f"跳过已有视频 {skipped_in_list + skipped_in_storage} 条"
@@ -245,7 +247,7 @@ async def run(
             "excel_path": str(excel_path),
             "added_count": added_count,
             "skipped_count": skipped_in_list + skipped_in_storage,
-            "sheet": excel_sheet_name(options.keyword),
+            "sheet": excel_sheet_name(sheet_keyword),
             "stopped": stop_event.is_set(),
         }
     finally:

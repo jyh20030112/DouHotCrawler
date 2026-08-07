@@ -11,7 +11,7 @@ DouHotCrawler collects keyword-based trending video data from Douhot (热点宝)
 - Search by keyword, result type, and time range.
 - Collect video metadata and top comments into per-keyword Excel sheets.
 - Skip videos already present in the workbook for incremental collection.
-- Extract transcripts through a separately configured private API.
+- Extract transcripts and video playback URLs through a separately configured private API.
 - Inspect crawler and transcript-cookie status without logging cookie values.
 - Run through a desktop GUI, CLI, or authenticated MCP endpoint.
 - Run crawl, analysis, and end-to-end jobs through a durable single-worker FastAPI queue with safe pause/resume.
@@ -121,14 +121,16 @@ Do not expose the service publicly with placeholder secrets. Put TLS and any add
 
 ### FastAPI task service
 
-Copy `.env.example` and configure the full external-service URLs and hotspot `openId`. `DOUHOT_API_DATA_ROOT=data/api` is resolved from the service working directory, so it is portable between local and server deployments.
+See the [detailed FastAPI API reference](docs/API.md) for request schemas, responses, task states, errors, pause/resume behavior, scheduling, and end-to-end examples.
+
+Copy `.env.example` and configure both keyword URLs, both ranking upload URLs, the Cookie and transcript URLs, hotspot `openId`, and the API data directory. When `DOUHOT_API_DATA_ROOT` is unset, data is stored under `DouHotCrawler/api` in the platform application-data directory; an explicitly configured relative path is resolved from the service working directory.
 
 ```bash
 uv sync
 uv run douhot-api
 ```
 
-The unauthenticated service defaults to `127.0.0.1:8000` with exactly one Uvicorn worker. OpenAPI documentation is available at `/docs`. Its `/api/v1` routes provide health and keyword lookup plus crawl, transcript-analysis, standalone existing-Excel upload, pipeline, pause, resume, and task-status operations. Jobs use a persistent global FIFO queue. Pipeline jobs process keywords sequentially as crawl → transcript → upload, default to 3 videos per keyword (`DOUHOT_MAX_VIDEOS_PER_KEYWORD`, range 1–500), send eligible rows in batches of 20, and can resume from SQLite checkpoints. Cookies are fetched immediately before each relevant phase and are never persisted by the API.
+The unauthenticated service defaults to `127.0.0.1:8000` with exactly one Uvicorn worker. OpenAPI documentation is available at `/docs`. Jobs use a persistent global FIFO queue. A pipeline defaults to `data_source=all`: it fully processes hotspot keywords first and uploads them to `rankingViralVideo`, then fully processes industry keywords and uploads them to `rankingViralVideoByIndustry`. `hotspot` and `industry` can also be selected individually. Every keyword runs sequentially as crawl → transcript and playback URL → upload. By default it crawls up to 15 candidates, stops transcript extraction after 3 eligible videos, and uploads no more than those 3; `DOUHOT_MAX_CANDIDATES_PER_KEYWORD` and `DOUHOT_MAX_VIDEOS_PER_KEYWORD` configure the two limits. If candidates are exhausted first, the partial result is uploaded with a `TARGET_NOT_REACHED` warning. SQLite checkpoints make execution resumable and source-specific workbook sheets and delivery keys keep equal hotspot and industry keywords isolated.
 
 Daily scheduling is built into the FastAPI process, so cron is not required. Configure it in `.env`; the time is interpreted in `Asia/Shanghai`:
 
@@ -137,7 +139,7 @@ DOUHOT_DAILY_ENABLED=true
 DOUHOT_DAILY_TIME=03:00
 ```
 
-Keep `uv run douhot-api` running. At the configured time it submits a pipeline, reusing any existing active or paused pipeline instead of creating a duplicate. Restart FastAPI after changing the schedule. `uv run douhot-daily` remains available as an immediate manual trigger.
+Keep `uv run douhot-api` running. At the configured time it submits a `data_source=all` pipeline. Restart FastAPI after changing the schedule. `uv run douhot-daily` explicitly submits the same full pipeline once and exits; it is an immediate trigger, not the resident scheduler.
 
 ## Architecture
 

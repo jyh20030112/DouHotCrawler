@@ -13,11 +13,13 @@ from .config import ApiSettings
 from .errors import ApiError
 from .models import (
     AnalyzeTaskRequest,
+    CollectKeywordRequest,
     CrawlTaskRequest,
     ErrorResponse,
     HealthResponse,
     KeywordResponse,
     PipelineTaskRequest,
+    RankingViralVideoItem,
     TaskAcceptedResponse,
     TaskResponse,
     UploadTaskRequest,
@@ -26,7 +28,7 @@ from .service import ApiTaskService
 
 
 API_DESCRIPTION = """
-DouHotCrawler 的异步任务 API，接口前缀统一为 `/api/v1`。
+DouHotCrawler 的任务 API，接口前缀统一为 `/api/v1`。
 
 ### 调用方式
 
@@ -36,9 +38,15 @@ DouHotCrawler 的异步任务 API，接口前缀统一为 `/api/v1`。
 
 ### 执行与数据规则
 
-- 所有 crawl、analyze、upload 和 pipeline 任务进入同一个持久化 FIFO 队列，严格串行执行。
-- pipeline 按关键词依次执行 **爬取 → 口播提取 → 每 20 条发送**，不会并发处理关键词。
-- 单关键词默认最多 3 条，可通过 `DOUHOT_MAX_VIDEOS_PER_KEYWORD` 调整；`keywords=null` 时从热点接口获取默认 30 个关键词。
+- 所有 crawl、analyze、upload、pipeline 和 collect 任务进入同一个持久化 FIFO
+  队列，严格串行执行。
+- collect 只要求 keyword；无 callback_url 时等待并返回最终数组，有 callback_url
+  时返回 202 并在完成后回调数组。
+- pipeline 默认先完整处理热点榜，再完整处理行业榜；每个关键词先爬取最多 15 条
+  候选，再串行提取口播，获得 3 条有效口播即停止，最后只发送这些有效数据。
+- 有效口播目标默认 3 条，候选上限默认 15 条，分别通过
+  `DOUHOT_MAX_VIDEOS_PER_KEYWORD` 和 `DOUHOT_MAX_CANDIDATES_PER_KEYWORD` 调整；
+  `keywords=null` 时从所选数据源接口取词，`all` 默认各取 30 个。
 - Cookie 在每个阶段从外部配置接口读取，只保存在内存，不写入 SQLite、Excel 或日志。
 - Excel 使用跨进程文件锁与原子替换保存。
 - Excel 和任务日志保留 3 天，终态 SQLite 元数据保留 7 天；活动及暂停任务不会清理。
@@ -57,7 +65,7 @@ DouHotCrawler 的异步任务 API，接口前缀统一为 `/api/v1`。
 
 OPENAPI_TAGS = [
     {"name": "系统", "description": "服务健康状态和运行依赖。"},
-    {"name": "关键词", "description": "从外部热点服务读取爬虫关键词。"},
+    {"name": "关键词", "description": "读取热点关键词，或按关键词采集并返回榜单数据。"},
     {"name": "任务创建", "description": "创建异步爬取、口播或完整流水线任务。"},
     {"name": "任务控制", "description": "查询进度，以及安全暂停和恢复任务。"},
 ]
@@ -107,7 +115,7 @@ def create_app(
         title="DouHot Crawler API",
         summary="热点宝爬取、口播提取和榜单发送任务服务",
         description=API_DESCRIPTION,
-        version="1.0.0",
+        version="1.2.0",
         openapi_tags=OPENAPI_TAGS,
         lifespan=lifespan,
     )
@@ -195,15 +203,49 @@ def create_app(
         return {"task_id": task["task_id"], "status": task["status"], "created": True}
 
     @app.post(
+        "/api/v1/viral-videos/collect",
+        response_model=list[RankingViralVideoItem],
+        tags=["关键词"],
+        summary="按关键词爬取并返回榜单视频数据",
+        description=(
+            "keyword 必填，其余字段可选。不传 callback_url 时，任务进入全局 FIFO 队列，"
+            "请求等待爬取和口播解析完成后，直接返回与 rankingViralVideo 请求体一致的数组。"
+            "传 callback_url 时立即返回 202 和 task_id，任务完成后向该地址 POST 同一个数组。"
+            "该接口只生成数据，不会上传榜单数据库。"
+        ),
+        responses={
+            202: {
+                "model": TaskAcceptedResponse,
+                "description": "已创建异步回调任务",
+            },
+            **ERROR_RESPONSES,
+        },
+    )
+    async def collect_viral_videos(
+        request: CollectKeywordRequest,
+    ) -> Any:
+        if request.callback_url is not None:
+            task = task_service.create_collect(request)
+            return JSONResponse(
+                status_code=status.HTTP_202_ACCEPTED,
+                content={
+                    "task_id": task["task_id"],
+                    "status": task["status"],
+                    "created": True,
+                },
+            )
+        return await task_service.collect(request)
+
+    @app.post(
         "/api/v1/tasks/analyze",
         response_model=TaskAcceptedResponse,
         status_code=status.HTTP_202_ACCEPTED,
         tags=["任务创建"],
-        summary="创建口播提取任务",
+        summary="创建口播和播放地址提取任务",
         description=(
-            "为一个已经成功的 crawl 任务补充视频口播。执行时实时获取 type=1 的 Douyin "
-            "Cookie，并更新原爬取任务的 Excel。crawl_task_id 不存在、未成功或文件正被占用时"
-            "分别返回 404/409。单条提取失败会继续处理后续视频并记录 warning。"
+            "为一个已经成功的 crawl 任务补充视频口播和视频播放地址。执行时实时获取 type=1 "
+            "的 Douyin Cookie，并更新原爬取任务的 Excel。crawl_task_id 不存在、未成功或文件"
+            "正被占用时分别返回 404/409。单条提取失败会继续处理后续视频并记录 warning。"
         ),
         responses=ERROR_RESPONSES,
     )
@@ -218,9 +260,17 @@ def create_app(
         tags=["任务创建"],
         summary="创建完整流水线任务",
         description=(
-            "按关键词严格串行执行爬取、口播提取和榜单发送。keywords 为 null 时自动获取热点"
-            "关键词；上传时跳过缺少视频名称、URL、博主或口播的行，每批固定 20 条。若已有 "
-            "queued/running/pausing/paused 流水线，则返回原 task_id 且 created=false。"
+            "data_source 默认为 all，严格串行地先完成热点榜，再完成行业榜；"
+            "也可设为 hotspot 或 industry 只处理一类。keywords=null 时调用对应"
+            "关键词接口；自定义 keywords 只允许用于单一数据源。每个关键词严格"
+            "串行执行爬取、口播提取和榜单发送。默认先爬取最多 15 条候选，"
+            "再逐条提取，获得 3 条有效口播即停止；候选耗尽时发送已有有效结果并"
+            "记录 TARGET_NOT_REACHED。热点数据发送到 "
+            "rankingViralVideo，行业数据发送到 rankingViralVideoByIndustry。"
+            "跳过缺少视频名称、分享 URL、博主或口播的行，videoPlayUrl 会一并"
+            "发送，且每个关键词不会超过有效口播目标；每批固定 20 条。已有参数"
+            "完全相同的活动流水线时返回原 "
+            "task_id 且 created=false；参数不同时返回 409。"
         ),
         responses=ERROR_RESPONSES,
     )
@@ -240,9 +290,10 @@ def create_app(
         summary="上传现有 Excel 的全部合格数据",
         description=(
             "通过 source_task_id 找到 crawl、analyze 或 pipeline 任务对应的现有 Excel，默认遍历"
-            "全部 Sheet 并发送到榜单数据库。缺少视频名称、视频 URL、博主名称或视频口播的行"
-            "会跳过；其余记录每 20 条一批发送。发送进度写入 SQLite，上传失败时任务自动暂停，"
-            "调用 resume 后只重发当前上传任务中尚未成功的记录。"
+            "全部 Sheet 并发送到榜单数据库。缺少视频名称、分享 URL、博主名称或视频口播的行"
+            "会跳过；视频播放地址通过 videoPlayUrl 发送，旧 Excel 缺少该列时发送空字符串。"
+            "其余记录每 20 条一批发送。发送进度写入 SQLite，上传失败时任务自动暂停，调用 "
+            "resume 后只重发当前上传任务中尚未成功的记录。"
         ),
         responses=ERROR_RESPONSES,
     )

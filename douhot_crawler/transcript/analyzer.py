@@ -6,6 +6,7 @@ import sys
 import time
 from collections.abc import Callable
 from copy import copy
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -24,13 +25,28 @@ DEFAULT_EXCEL_PATH = RESULT_EXCEL_PATH
 DEFAULT_COOKIE_PATH = COOKIE_CONFIG_PATH
 VIDEO_URL_HEADER = "视频的url"
 TRANSCRIPT_HEADER = "视频口播"
+VIDEO_PLAY_URL_HEADER = "视频播放地址"
+
+
+@dataclass(frozen=True)
+class ExtractedVideo:
+    """视频提取接口返回的可持久化字段。"""
+
+    video_id: str
+    title: str
+    video_url: str
+    transcript: str
+
+
+class ExtractionServiceUnavailable(RuntimeError):
+    """The shared extraction service cannot process any candidate right now."""
 
 
 def parse_args() -> argparse.Namespace:
     """解析口播提取任务参数。"""
 
     parser = argparse.ArgumentParser(
-        description="调用视频提取接口，将口播文本写入结果 Excel"
+        description="调用视频提取接口，将口播文本和视频播放地址写入结果 Excel"
     )
     parser.add_argument(
         "--excel",
@@ -74,7 +90,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--overwrite",
         action="store_true",
-        help="重新提取已有口播的记录",
+        help="重新提取已有口播和视频播放地址的记录",
     )
     return parser.parse_args()
 
@@ -91,14 +107,14 @@ def read_cookie(cookie_path: Path) -> str:
     return cookie
 
 
-def extract_transcript(
+def _request_extraction(
     share_link: str,
     cookie: str,
     callback_url: str,
     timeout: float,
     api_url: str | None = None,
-) -> str:
-    """请求接口并返回视频口播文本。"""
+) -> dict[str, Any]:
+    """请求视频提取接口并返回已校验的 JSON 对象。"""
 
     endpoint = api_url or EXTRACT_API_URL
     if not endpoint:
@@ -130,6 +146,8 @@ def extract_transcript(
             with urlopen(request, timeout=timeout) as response:
                 result = json.load(response)
             break
+        except json.JSONDecodeError as exc:
+            raise ExtractionServiceUnavailable("接口响应不是有效 JSON") from exc
         except HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")[:500]
             try:
@@ -141,37 +159,104 @@ def extract_transcript(
             if (exc.code == 429 or exc.code >= 500) and attempt < len(delays) - 1:
                 continue
             suffix = f"：{safe_detail}" if safe_detail else ""
+            if exc.code in {401, 403, 429} or exc.code >= 500:
+                raise ExtractionServiceUnavailable(
+                    f"接口返回 HTTP {exc.code}{suffix}"
+                ) from exc
             raise RuntimeError(f"接口返回 HTTP {exc.code}{suffix}") from exc
         except URLError as exc:
             if attempt < len(delays) - 1:
                 continue
-            raise RuntimeError(f"接口请求失败：{exc.reason}") from exc
+            raise ExtractionServiceUnavailable(
+                f"接口请求失败：{exc.reason}"
+            ) from exc
 
     if not isinstance(result, dict):
-        raise RuntimeError("接口返回不是 JSON 对象")
+        raise ExtractionServiceUnavailable("接口返回不是 JSON 对象")
     if result.get("success") is not True:
         raise RuntimeError(f"接口未成功返回：{result.get('message', result)}")
+    return result
 
-    transcript = result.get("transcript")
-    if not isinstance(transcript, str) or not transcript.strip():
-        raise RuntimeError("接口成功但没有返回 transcript")
-    return transcript.strip()
+
+def _required_response_text(result: dict[str, Any], field: str) -> str:
+    value = result.get(field)
+    if not isinstance(value, str) or not value.strip():
+        raise RuntimeError(f"接口成功但没有返回 {field}")
+    return value.strip()
+
+
+def _optional_response_text(result: dict[str, Any], field: str) -> str:
+    value = result.get(field)
+    return value.strip() if isinstance(value, str) else ""
+
+
+def extract_video(
+    share_link: str,
+    cookie: str,
+    callback_url: str,
+    timeout: float,
+    api_url: str | None = None,
+) -> ExtractedVideo:
+    """请求接口并返回口播、播放地址和视频元数据。"""
+
+    result = _request_extraction(
+        share_link,
+        cookie,
+        callback_url,
+        timeout,
+        api_url=api_url,
+    )
+    return ExtractedVideo(
+        video_id=_required_response_text(result, "video_id"),
+        title=_required_response_text(result, "title"),
+        video_url=_optional_response_text(result, "video_url"),
+        transcript=_required_response_text(result, "transcript"),
+    )
+
+
+def extract_transcript(
+    share_link: str,
+    cookie: str,
+    callback_url: str,
+    timeout: float,
+    api_url: str | None = None,
+) -> str:
+    """请求接口并返回视频口播文本，兼容现有单口播调用方。"""
+
+    result = _request_extraction(
+        share_link,
+        cookie,
+        callback_url,
+        timeout,
+        api_url=api_url,
+    )
+    return _required_response_text(result, "transcript")
+
+
+def _output_column(worksheet, header: str, width: int) -> int:
+    headers = [cell.value for cell in worksheet[1]]
+    if header in headers:
+        return headers.index(header) + 1
+
+    column = worksheet.max_column + 1
+    cell = worksheet.cell(row=1, column=column, value=header)
+    font = copy(cell.font)
+    font.bold = True
+    cell.font = font
+    worksheet.column_dimensions[cell.column_letter].width = width
+    return column
 
 
 def transcript_column(worksheet) -> int:
     """获取或创建“视频口播”列，并返回列号。"""
 
-    headers = [cell.value for cell in worksheet[1]]
-    if TRANSCRIPT_HEADER in headers:
-        return headers.index(TRANSCRIPT_HEADER) + 1
+    return _output_column(worksheet, TRANSCRIPT_HEADER, 110)
 
-    column = worksheet.max_column + 1
-    cell = worksheet.cell(row=1, column=column, value=TRANSCRIPT_HEADER)
-    font = copy(cell.font)
-    font.bold = True
-    cell.font = font
-    worksheet.column_dimensions[cell.column_letter].width = 110
-    return column
+
+def video_play_url_column(worksheet) -> int:
+    """获取或创建“视频播放地址”列，并返回列号。"""
+
+    return _output_column(worksheet, VIDEO_PLAY_URL_HEADER, 70)
 
 
 def select_sheets(workbook, requested_sheets: list[str] | None):
@@ -199,11 +284,14 @@ def analyze_excel(
         raise ValueError("--delay 不能小于 0")
     if args.limit is not None and args.limit <= 0:
         raise ValueError("--limit 必须大于 0")
+    success_limit = getattr(args, "success_limit", None)
+    if success_limit is not None and success_limit <= 0:
+        raise ValueError("success_limit 必须大于 0")
     if not args.excel.is_file():
         raise FileNotFoundError(f"没有找到结果 Excel：{args.excel}")
 
     cookie = getattr(args, "cookie", None) or read_cookie(args.cookie_file)
-    extractor = getattr(args, "extractor", extract_transcript)
+    extractor = getattr(args, "extractor", extract_video)
     progress_callback = getattr(args, "progress_callback", None)
     api_url = getattr(args, "api_url", None)
     workbook = load_workbook(args.excel)
@@ -221,8 +309,10 @@ def analyze_excel(
 
             url_column = headers.index(VIDEO_URL_HEADER) + 1
             had_transcript_column = TRANSCRIPT_HEADER in headers
+            had_play_url_column = VIDEO_PLAY_URL_HEADER in headers
             text_column = transcript_column(worksheet)
-            if not had_transcript_column:
+            play_url_column = video_play_url_column(worksheet)
+            if not had_transcript_column or not had_play_url_column:
                 atomic_workbook_save(workbook, args.excel)
             print(f"\n开始处理 Sheet：{worksheet.title}")
 
@@ -236,37 +326,67 @@ def analyze_excel(
                     return success_count, skipped_count, failed_count
                 if args.limit is not None and processed_count >= args.limit:
                     break
+                if success_limit is not None and success_count >= success_limit:
+                    break
 
                 share_link = worksheet.cell(row=row_number, column=url_column).value
                 existing_text = worksheet.cell(row=row_number, column=text_column).value
+                existing_play_url = worksheet.cell(
+                    row=row_number, column=play_url_column
+                ).value
                 if not isinstance(share_link, str) or not share_link.strip():
                     skipped_count += 1
                     continue
-                if existing_text and not args.overwrite:
+                has_existing_text = bool(str(existing_text or "").strip())
+                if success_limit is not None and has_existing_text and not args.overwrite:
+                    skipped_count += 1
+                    continue
+                if existing_text and existing_play_url and not args.overwrite:
                     skipped_count += 1
                     continue
 
                 processed_count += 1
                 try:
-                    transcript = extractor(
+                    extracted = extractor(
                         share_link=share_link.strip(),
                         cookie=cookie,
                         callback_url=args.callback_url,
                         timeout=args.timeout,
                         **({"api_url": api_url} if api_url else {}),
                     )
-                    cell = worksheet.cell(row=row_number, column=text_column)
-                    cell.value = transcript
-                    alignment = copy(cell.alignment)
-                    alignment.wrap_text = True
-                    alignment.vertical = "top"
-                    cell.alignment = alignment
+                    if isinstance(extracted, ExtractedVideo):
+                        transcript = extracted.transcript
+                        video_play_url = extracted.video_url
+                    elif isinstance(extracted, str):
+                        transcript = extracted
+                        video_play_url = ""
+                    else:
+                        raise TypeError("视频提取函数返回了不支持的数据类型")
+                    if not isinstance(transcript, str) or not transcript.strip():
+                        raise RuntimeError("接口成功但没有返回 transcript")
+                    transcript = transcript.strip()
+                    if not existing_text or args.overwrite:
+                        cell = worksheet.cell(row=row_number, column=text_column)
+                        cell.value = transcript
+                        alignment = copy(cell.alignment)
+                        alignment.wrap_text = True
+                        alignment.vertical = "top"
+                        cell.alignment = alignment
+                    if video_play_url:
+                        play_url_cell = worksheet.cell(
+                            row=row_number, column=play_url_column
+                        )
+                        play_url_cell.value = video_play_url
+                        play_url_cell.hyperlink = video_play_url
+                        play_url_cell.style = "Hyperlink"
                     atomic_workbook_save(workbook, args.excel)
                     success_count += 1
                     print(
                         f"  第 {row_number} 行口播已写入"
                         f"（本次已完成 {success_count} 个）"
                     )
+                except ExtractionServiceUnavailable:
+                    raise
                 except Exception as exc:
                     failed_count += 1
                     print(f"  第 {row_number} 行提取失败：{exc}", file=sys.stderr)
@@ -283,10 +403,15 @@ def analyze_excel(
                         }
                     )
 
+                if success_limit is not None and success_count >= success_limit:
+                    break
+
                 if args.delay:
                     time.sleep(args.delay)
 
             if args.limit is not None and processed_count >= args.limit:
+                break
+            if success_limit is not None and success_count >= success_limit:
                 break
     finally:
         workbook.close()

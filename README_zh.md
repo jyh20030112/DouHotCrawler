@@ -11,7 +11,7 @@ DouHotCrawler 用于按关键词采集热点宝（Douhot）榜单视频，将结
 - 按关键词、榜单类型和时间范围采集视频。
 - 将视频信息和高赞评论写入按关键词划分的 Excel Sheet。
 - 自动跳过工作簿中已存在的视频，支持持续增量采集。
-- 通过私有提取接口为已有记录补充口播文本。
+- 通过私有提取接口为已有记录补充口播文本和视频播放地址。
 - 安全检查爬虫登录态和口播 Cookie 状态，不输出 Cookie 内容。
 - 提供桌面 GUI、CLI 和带 Bearer 认证的 MCP 服务。
 - 提供无认证的 FastAPI FIFO 任务队列，支持爬取、口播、完整流水线及安全暂停/恢复。
@@ -117,14 +117,16 @@ uv run douhot-mcp
 
 ### FastAPI 任务服务
 
-先复制 `.env.example`，填写三个外部接口、口播接口、热点 `openId` 和 API 数据目录。默认使用 `DOUHOT_API_DATA_ROOT=data/api`，相对路径以服务启动时的工作目录为基准；本机和服务器均可复用，不需要写死用户名。配置缺失时服务会拒绝启动。
+完整的请求参数、响应结构、状态机、错误码、暂停恢复、定时任务和调用示例见 [FastAPI API 详细文档](docs/API.md)。仅接入关键词视频采集接口时，可直接阅读 [关键词视频采集接口接入文档](docs/VIRAL_VIDEOS_COLLECT_API.md)。
+
+先复制 `.env.example`，填写热点/行业取词接口、两个榜单接收接口、Cookie 接口、口播接口、`openId` 和 API 数据目录。未设置 `DOUHOT_API_DATA_ROOT` 时使用系统应用数据目录下的 `DouHotCrawler/api`；显式配置相对路径时，以服务启动时的工作目录为基准。本机和服务器均不需要写死用户名。必要外部接口配置缺失时服务会拒绝启动。
 
 ```bash
 uv sync
 uv run douhot-api
 ```
 
-默认监听 `127.0.0.1:8000`，固定为单 Uvicorn worker，接口本身不做身份认证。交互文档位于 `http://127.0.0.1:8000/docs`。任务采用 SQLite 持久化的全局 FIFO 队列，同一时间只运行一个爬取、口播或流水线任务；Cookie 每个阶段从配置接口重新读取，只保存在内存中。
+默认监听 `127.0.0.1:8000`，固定为单 Uvicorn worker，接口本身不做身份认证。交互文档位于 `http://127.0.0.1:8000/docs`。任务采用 SQLite 持久化的全局 FIFO 队列，同一时间只运行一个爬取、口播、关键词采集或流水线任务；Cookie 每个阶段从配置接口重新读取，只保存在内存中。
 
 主要接口：
 
@@ -132,15 +134,18 @@ uv run douhot-api
 | --- | --- | --- |
 | `GET` | `/api/v1/health` | 数据库、worker 和浏览器状态 |
 | `GET` | `/api/v1/keywords` | 返回 `{"key_word": [...]}` 热点关键词 |
+| `POST` | `/api/v1/viral-videos/collect` | 按关键词爬取和解析；同步返回或异步回调榜单数组 |
 | `POST` | `/api/v1/tasks/crawl` | 创建单关键词爬取任务，默认最多 3 条 |
-| `POST` | `/api/v1/tasks/analyze` | 为已成功的爬取任务补充口播 |
+| `POST` | `/api/v1/tasks/analyze` | 为已成功的爬取任务补充口播和视频播放地址 |
 | `POST` | `/api/v1/tasks/pipeline` | 顺序执行关键词获取、爬取、口播和发送 |
 | `POST` | `/api/v1/tasks/upload` | 将指定任务现有 Excel 的全部合格数据分批发送 |
 | `POST` | `/api/v1/tasks/{task_id}/pause` | 在当前安全检查点暂停 |
 | `POST` | `/api/v1/tasks/{task_id}/resume` | 恢复 paused 任务 |
 | `GET` | `/api/v1/tasks/{task_id}` | 查询状态、进度、告警与结果文件信息 |
 
-不传 `keywords` 时流水线读取全部热点关键词（默认 30 个）；也可传入不超过 30 个关键词覆盖。每个关键词默认最多爬取 3 条，可通过 `.env` 中的 `DOUHOT_MAX_VIDEOS_PER_KEYWORD`（1–500）调整，也可由请求的 `limit` / `limit_per_keyword` 临时覆盖。发送阶段跳过缺少视频名称、URL、博主或口播的行，每 20 条一批；粉丝数会转换为整数，无法解析时按 `0` 发送并记录告警。Excel、任务日志保留 3 天，SQLite 元数据保留 7 天，运行中或暂停中的任务不会清理。
+`/api/v1/viral-videos/collect` 只有 `keyword` 必填：不传 `callback_url` 时等待 FIFO 任务完成并直接返回与 `rankingViralVideo` 请求体一致的数组；传入回调地址时立即返回 `202 + task_id`，完成后 POST 同一个数组。该接口不上传榜单数据库。
+
+`POST /api/v1/tasks/pipeline` 的 `data_source` 默认为 `all`：先串行完成全部热点关键词，发送到 `rankingViralVideo`；再串行完成全部行业关键词，发送到 `rankingViralVideoByIndustry`。也可设为 `hotspot` 或 `industry` 只跑一类。自定义 `keywords` 最多 30 个，仅能与单一数据源同时使用；`all` 不允许传 `keywords`，避免关键词归属不明。每个关键词默认先爬取最多 15 条候选，再串行提取口播，获得 3 条有效口播即停止；候选耗尽但不足 3 条时发送已有结果并记录 `TARGET_NOT_REACHED`。有效口播目标由 `.env` 的 `DOUHOT_MAX_VIDEOS_PER_KEYWORD` 控制，候选上限由 `DOUHOT_MAX_CANDIDATES_PER_KEYWORD` 控制，也可分别用请求字段 `limit_per_keyword` 和 `candidate_limit_per_keyword` 覆盖。发送阶段跳过缺少视频名称、分享 URL、博主或口播的行，并严格封顶有效口播目标；每 20 条一批，视频播放地址通过 `videoPlayUrl` 发送。粉丝数无法解析时按 `0` 发送并记录告警。Excel、任务日志保留 3 天，SQLite 元数据保留 7 天。
 
 每日调度已经内置在 FastAPI 服务中，不需要配置 cron。通过 `.env` 设置是否启用及上海时区触发时间：
 
@@ -149,7 +154,7 @@ DOUHOT_DAILY_ENABLED=true
 DOUHOT_DAILY_TIME=03:00
 ```
 
-保持 `uv run douhot-api` 常驻即可。到点后服务会创建完整 pipeline；已有 active/paused 流水线时不会重复创建。修改时间后需要重启 FastAPI。`uv run douhot-daily` 保留为不等待计划时间、立即提交一次 pipeline 的手动命令。
+保持 `uv run douhot-api` 常驻即可。到点后服务会创建 `data_source=all` 的完整 pipeline；已有 active/paused 流水线时不会重复创建。修改时间后需要重启 FastAPI。`uv run douhot-daily` 会显式提交 `{"data_source":"all"}` 后退出，是立即手动触发器，不是后台调度进程。
 
 ## 项目架构
 

@@ -16,17 +16,22 @@ from openpyxl import load_workbook
 
 from douhot_crawler.browser.setup import chromium_status
 from douhot_crawler.core.models import RunOptions
-from douhot_crawler.core.storage import excel_sheet_name
+from douhot_crawler.core.storage import excel_sheet_name, write_result_excel
 from douhot_crawler.crawling.runner import run as run_crawler
-from douhot_crawler.transcript.analyzer import analyze_excel
+from douhot_crawler.transcript.analyzer import (
+    ExtractionServiceUnavailable,
+    analyze_excel,
+)
 
 from .clients import ExternalApiClient
 from .config import ApiSettings
-from .errors import ApiError, TaskPaused
+from .errors import ApiError, ExternalServiceError, TaskPaused
 from .files import workbook_lock, workbook_metadata, safe_remove_task_directory
 from .models import (
     AnalyzeTaskRequest,
+    CollectKeywordRequest,
     CrawlTaskRequest,
+    PipelineDataSource,
     PipelineTaskRequest,
     TaskKind,
     TaskStatus,
@@ -35,7 +40,7 @@ from .models import (
 from .store import ApiTaskStore
 
 
-UPLOAD_HEADERS = {
+REQUIRED_UPLOAD_HEADERS = {
     "videoName": "视频名称",
     "videoUrl": "视频的url",
     "authorName": "博主名称",
@@ -47,7 +52,30 @@ UPLOAD_HEADERS = {
     "highPraiseComment": "高赞评论",
     "videoOral": "视频口播",
 }
+OPTIONAL_UPLOAD_HEADERS = {
+    "videoPlayUrl": "视频播放地址",
+}
+UPLOAD_HEADERS = {**REQUIRED_UPLOAD_HEADERS, **OPTIONAL_UPLOAD_HEADERS}
 SHANGHAI_TIMEZONE = ZoneInfo("Asia/Shanghai")
+
+
+def pipeline_sheet_name(source: PipelineDataSource | str, keyword: str) -> str:
+    """Return a stable, source-isolated Excel sheet name."""
+
+    source = PipelineDataSource(source)
+    if source == PipelineDataSource.HOTSPOT:
+        return excel_sheet_name(keyword)
+    digest = hashlib.sha1(keyword.encode("utf-8")).hexdigest()[:6]
+    base = excel_sheet_name(f"行业_{keyword}")
+    return f"{base[:24]}_{digest}"
+
+
+def pipeline_request_from_params(params: dict[str, Any]) -> PipelineTaskRequest:
+    """Load persisted pipeline params, preserving the pre-industry hotspot default."""
+
+    compatible = dict(params)
+    compatible.setdefault("data_source", PipelineDataSource.HOTSPOT.value)
+    return PipelineTaskRequest.model_validate(compatible)
 
 
 def parse_follower_count(value: object) -> tuple[int, bool]:
@@ -136,11 +164,19 @@ class ApiTaskService:
             await asyncio.sleep(delay)
             if self._closing:
                 return
-            task, created = self.create_pipeline(PipelineTaskRequest())
+            task, created = self._create_daily_pipeline()
             if created:
                 self._log(task["task_id"], "上海时区每日定时任务已触发")
             else:
                 self._log(task["task_id"], "已有活动流水线，每日定时任务未重复创建")
+
+    def _create_daily_pipeline(self) -> tuple[dict[str, Any], bool]:
+        """Create the default all-source job unless any pipeline is active."""
+
+        existing = self.store.active_pipeline()
+        if existing:
+            return existing, False
+        return self.create_pipeline(PipelineTaskRequest())
 
     def _task_dir(self, task_id: str) -> Path:
         return self.tasks_root / task_id
@@ -174,6 +210,42 @@ class ApiTaskService:
         self._wake.set()
         return task
 
+    def create_collect(self, request: CollectKeywordRequest) -> dict[str, Any]:
+        task = self.store.create(TaskKind.COLLECT, request.model_dump(mode="json"))
+        self._log(task["task_id"], "关键词采集任务已进入队列")
+        self._wake.set()
+        return task
+
+    async def collect(self, request: CollectKeywordRequest) -> list[dict[str, Any]]:
+        task = self.create_collect(request)
+        task_id = task["task_id"]
+        while True:
+            current = self.store.get(task_id)
+            status = TaskStatus(current["status"])
+            if status in {TaskStatus.SUCCEEDED, TaskStatus.SUCCEEDED_WITH_WARNINGS}:
+                result = current.get("result") or {}
+                records = result.get("records")
+                if not isinstance(records, list):
+                    raise ApiError(
+                        "COLLECT_RESULT_INVALID",
+                        "关键词采集任务没有生成有效结果",
+                        status_code=500,
+                    )
+                return records
+            if status == TaskStatus.FAILED:
+                raise ApiError(
+                    "COLLECT_FAILED",
+                    str(current.get("error") or "关键词采集任务失败"),
+                    status_code=502,
+                )
+            if status == TaskStatus.PAUSED:
+                raise ApiError(
+                    "COLLECT_PAUSED",
+                    "关键词采集任务已暂停",
+                    status_code=409,
+                )
+            await asyncio.sleep(0.5)
+
     def create_analyze(self, request: AnalyzeTaskRequest) -> dict[str, Any]:
         source = self.store.get(request.crawl_task_id)
         if source["kind"] != TaskKind.CRAWL or source["status"] not in {
@@ -194,13 +266,45 @@ class ApiTaskService:
         return task
 
     def create_pipeline(self, request: PipelineTaskRequest) -> tuple[dict[str, Any], bool]:
+        self._pipeline_limits(request)
         existing = self.store.active_pipeline()
         if existing:
-            return existing, False
-        task = self.store.create(TaskKind.PIPELINE, request.model_dump(mode="json"))
+            existing_params = pipeline_request_from_params(existing["params"]).model_dump(
+                mode="json"
+            )
+            requested_params = request.model_dump(mode="json")
+            if existing_params == requested_params:
+                return existing, False
+            raise ApiError(
+                "PIPELINE_ALREADY_ACTIVE",
+                "已有参数不同的活动流水线，请等待完成或先暂停后处理",
+                status_code=409,
+                details={"task_id": existing["task_id"]},
+            )
+        task = self.store.create(
+            TaskKind.PIPELINE, request.model_dump(mode="json")
+        )
         self._log(task["task_id"], "流水线任务已进入队列")
         self._wake.set()
         return task, True
+
+    def _pipeline_limits(self, request: PipelineTaskRequest) -> tuple[int, int]:
+        target = request.limit_per_keyword or self.settings.max_videos_per_keyword
+        candidate_limit = (
+            request.candidate_limit_per_keyword
+            or self.settings.max_candidates_per_keyword
+        )
+        if candidate_limit < target:
+            raise ApiError(
+                "INVALID_PIPELINE_LIMITS",
+                "候选视频上限不能小于有效口播目标",
+                status_code=400,
+                details={
+                    "limit_per_keyword": target,
+                    "candidate_limit_per_keyword": candidate_limit,
+                },
+            )
+        return target, candidate_limit
 
     def _source_workbook(self, source_task_id: str) -> Path:
         source = self.store.get(source_task_id)
@@ -273,6 +377,10 @@ class ApiTaskService:
             kind = TaskKind(task["kind"])
             if kind == TaskKind.CRAWL:
                 await self._execute_crawl(task_id, CrawlTaskRequest.model_validate(task["params"]))
+            elif kind == TaskKind.COLLECT:
+                await self._execute_collect(
+                    task_id, CollectKeywordRequest.model_validate(task["params"])
+                )
             elif kind == TaskKind.ANALYZE:
                 await self._execute_analyze(
                     task_id, AnalyzeTaskRequest.model_validate(task["params"])
@@ -281,10 +389,12 @@ class ApiTaskService:
                 await self._execute_upload(
                     task_id, UploadTaskRequest.model_validate(task["params"])
                 )
-            else:
+            elif kind == TaskKind.PIPELINE:
                 await self._execute_pipeline(
-                    task_id, PipelineTaskRequest.model_validate(task["params"])
+                    task_id, pipeline_request_from_params(task["params"])
                 )
+            else:
+                raise RuntimeError(f"不支持的任务类型：{kind}")
         except TaskPaused as exc:
             if exc.reason == "shutdown":
                 if task["kind"] == TaskKind.PIPELINE:
@@ -318,15 +428,18 @@ class ApiTaskService:
         task_id: str,
         request: CrawlTaskRequest,
         workbook: Path,
+        *,
+        storage_keyword: str | None = None,
     ) -> dict[str, Any]:
         self._raise_if_paused(task_id)
+        sheet_keyword = storage_keyword or request.keyword
+        sheet_name = excel_sheet_name(sheet_keyword)
         target = request.limit or self.settings.max_videos_per_keyword
         existing = 0
         if workbook.is_file():
             with workbook_lock(workbook):
                 book = load_workbook(workbook, read_only=True, data_only=True)
                 try:
-                    sheet_name = excel_sheet_name(request.keyword)
                     if sheet_name in book.sheetnames:
                         existing = max(book[sheet_name].max_row - 1, 0)
                 finally:
@@ -337,7 +450,7 @@ class ApiTaskService:
                 "excel_path": str(workbook),
                 "added_count": 0,
                 "skipped_count": existing,
-                "sheet": excel_sheet_name(request.keyword),
+                "sheet": sheet_name,
                 "stopped": False,
             }
         cookie = await self.client.fetch_cookie(0)
@@ -361,6 +474,7 @@ class ApiTaskService:
                 browser_cookie=cookie,
                 stop_requested=lambda: self.store.should_pause(task_id),
                 progress_callback=progress,
+                storage_keyword=sheet_keyword,
             )
         if result.get("stopped") or self.store.should_pause(task_id):
             state = self.store.get(task_id)
@@ -381,6 +495,8 @@ class ApiTaskService:
         workbook: Path,
         cookie: str,
         task_id: str,
+        *,
+        success_limit: int | None = None,
     ) -> argparse.Namespace:
         def progress(values: dict[str, Any]) -> None:
             self.store.update_progress(task_id, phase="analyze", **values)
@@ -394,6 +510,7 @@ class ApiTaskService:
             timeout=request.timeout,
             delay=request.delay,
             limit=request.limit,
+            success_limit=success_limit,
             overwrite=request.overwrite,
             api_url=self.settings.external_url("extract_api_url"),
             progress_callback=progress,
@@ -404,16 +521,30 @@ class ApiTaskService:
         task_id: str,
         request: AnalyzeTaskRequest,
         workbook: Path,
+        *,
+        success_limit: int | None = None,
     ) -> tuple[int, int, int]:
         self._raise_if_paused(task_id)
-        cookie = await self.client.fetch_cookie(1)
-        args = self._analyze_args(request, workbook, cookie, task_id)
-        with workbook_lock(workbook):
-            counts = await asyncio.to_thread(
-                analyze_excel,
-                args,
-                stop_requested=lambda: self.store.should_pause(task_id),
-            )
+        try:
+            cookie = await self.client.fetch_cookie(1)
+        except ExternalServiceError as exc:
+            raise TaskPaused("transcript_cookie_failure") from exc
+        args = self._analyze_args(
+            request,
+            workbook,
+            cookie,
+            task_id,
+            success_limit=success_limit,
+        )
+        try:
+            with workbook_lock(workbook):
+                counts = await asyncio.to_thread(
+                    analyze_excel,
+                    args,
+                    stop_requested=lambda: self.store.should_pause(task_id),
+                )
+        except ExtractionServiceUnavailable as exc:
+            raise TaskPaused("extract_service_unavailable") from exc
         if self.store.should_pause(task_id):
             state = self.store.get(task_id)
             raise TaskPaused(state.get("pause_reason") or "user")
@@ -434,6 +565,80 @@ class ApiTaskService:
         }
         self.store.finish(task_id, result=result, artifact_path=workbook)
         self._log(task_id, f"口播完成：成功 {succeeded}，跳过 {skipped}，失败 {failed}")
+
+    async def _execute_collect(
+        self, task_id: str, request: CollectKeywordRequest
+    ) -> None:
+        workbook = self._workbook(task_id)
+        crawl_request = CrawlTaskRequest(
+            keyword=request.keyword,
+            result_type=request.result_type,
+            time_range=request.time_range,
+            input_timeout=request.input_timeout,
+            detail_delay=request.detail_delay,
+            limit=request.limit,
+        )
+        crawl_result = await self._crawl_keyword(task_id, crawl_request, workbook)
+        if not workbook.is_file():
+            with workbook_lock(workbook):
+                await asyncio.to_thread(
+                    write_result_excel,
+                    [],
+                    workbook,
+                    request.keyword,
+                    request.result_type,
+                    request.time_range,
+                    datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S"),
+                )
+        sheet_name = excel_sheet_name(request.keyword)
+        analyze_request = AnalyzeTaskRequest(
+            crawl_task_id=task_id,
+            sheets=[sheet_name],
+            timeout=request.analyze_timeout,
+            delay=request.analyze_delay,
+        )
+        succeeded, skipped, failed = await self._analyze_workbook(
+            task_id, analyze_request, workbook
+        )
+        if failed:
+            self.store.add_warning(task_id, f"有 {failed} 条视频口播提取失败")
+        records = [
+            payload
+            for payload, _ in self._sheet_payloads(
+                task_id,
+                workbook,
+                sheet_name,
+                keyword=request.keyword,
+            )
+        ]
+        if failed and succeeded == 0 and not records:
+            raise RuntimeError("所有已爬取视频的口播解析均失败")
+        result = {
+            "crawl": crawl_result,
+            "analyze": {
+                "succeeded": succeeded,
+                "skipped": skipped,
+                "failed": failed,
+            },
+            "record_count": len(records),
+            "records": records,
+            "artifact": self._artifact(workbook),
+        }
+        if request.callback_url is not None:
+            self.store.update_progress(
+                task_id,
+                phase="callback",
+                record_count=len(records),
+            )
+            self._log(task_id, f"开始回调 {len(records)} 条结果")
+            await self.client.send_callback(
+                str(request.callback_url),
+                records,
+                task_id=task_id,
+            )
+            self._log(task_id, "结果回调完成")
+        self.store.finish(task_id, result=result, artifact_path=workbook)
+        self._log(task_id, f"关键词采集完成，生成 {len(records)} 条结果")
 
     async def _execute_upload(
         self, task_id: str, request: UploadTaskRequest
@@ -479,27 +684,70 @@ class ApiTaskService:
     async def _execute_pipeline(
         self, task_id: str, request: PipelineTaskRequest
     ) -> None:
+        target_count, candidate_limit = self._pipeline_limits(request)
         checkpoints = self.store.pipeline_keywords(task_id)
         if not checkpoints:
-            keywords = request.keywords or await self.client.fetch_keywords()
-            if not keywords:
-                raise RuntimeError("热点关键词接口没有返回有效关键词")
-            self.store.set_pipeline_keywords(task_id, keywords)
+            specifications: list[dict[str, str]] = []
+            used_sheet_names: set[str] = set()
+            selected_sources = (
+                [PipelineDataSource.HOTSPOT, PipelineDataSource.INDUSTRY]
+                if request.data_source == PipelineDataSource.ALL
+                else [request.data_source]
+            )
+            for source in selected_sources:
+                if request.keywords is not None:
+                    keywords = request.keywords
+                elif source == PipelineDataSource.HOTSPOT:
+                    keywords = await self.client.fetch_keywords()
+                else:
+                    keywords = await self.client.fetch_industry_keywords()
+                if not keywords:
+                    label = "热点" if source == PipelineDataSource.HOTSPOT else "行业"
+                    raise RuntimeError(f"{label}关键词接口没有返回有效关键词")
+                specifications.extend(
+                    self._pipeline_specification(
+                        source,
+                        keyword,
+                        used_sheet_names,
+                    )
+                    for keyword in keywords
+                )
+            self.store.set_pipeline_keywords(task_id, specifications)
             checkpoints = self.store.pipeline_keywords(task_id)
-            self.store.update_progress(task_id, phase="keywords", total=len(keywords), current=0)
+            self.store.update_progress(
+                task_id,
+                phase="keywords",
+                data_source=request.data_source.value,
+                total=len(checkpoints),
+                current=0,
+                target_count=target_count,
+                candidate_limit=candidate_limit,
+            )
 
         workbook = self._workbook(task_id)
         successful_keywords = 0
+        source_counts = {
+            source.value: {"total": 0, "succeeded": 0, "failed": 0}
+            for source in (PipelineDataSource.HOTSPOT, PipelineDataSource.INDUSTRY)
+            if any(row["source"] == source.value for row in checkpoints)
+        }
         for checkpoint in checkpoints:
             position = checkpoint["position"]
+            source = PipelineDataSource(checkpoint["source"])
             keyword = checkpoint["keyword"]
+            sheet_name = checkpoint["sheet_name"]
+            source_counts[source.value]["total"] += 1
             self._raise_if_paused(task_id)
             self.store.update_progress(
                 task_id,
                 phase="keyword",
                 current=position + 1,
                 total=len(checkpoints),
+                source=source.value,
                 keyword=keyword,
+                sheet=sheet_name,
+                target_count=target_count,
+                candidate_limit=candidate_limit,
             )
             try:
                 if not checkpoint["crawl_done"]:
@@ -509,47 +757,91 @@ class ApiTaskService:
                         time_range=request.time_range,
                         input_timeout=request.input_timeout,
                         detail_delay=request.detail_delay,
-                        limit=request.limit_per_keyword,
+                        limit=candidate_limit,
                     )
-                    await self._crawl_keyword(task_id, crawl_request, workbook)
+                    await self._crawl_keyword(
+                        task_id,
+                        crawl_request,
+                        workbook,
+                        storage_keyword=sheet_name,
+                    )
                     self.store.update_pipeline_keyword(task_id, position, crawl_done=True)
 
                 if not checkpoint["analyze_done"]:
+                    valid_before = self._eligible_sheet_count(workbook, sheet_name)
+                    remaining_target = (
+                        target_count
+                        if request.overwrite_transcript
+                        else max(target_count - valid_before, 0)
+                    )
                     analyze_request = AnalyzeTaskRequest(
                         crawl_task_id=task_id,
-                        sheets=[excel_sheet_name(keyword)],
+                        sheets=[sheet_name],
                         overwrite=request.overwrite_transcript,
                     )
-                    succeeded, skipped, failed = await self._analyze_workbook(
-                        task_id, analyze_request, workbook
-                    )
+                    if remaining_target:
+                        succeeded, skipped, failed = await self._analyze_workbook(
+                            task_id,
+                            analyze_request,
+                            workbook,
+                            success_limit=remaining_target,
+                        )
+                    else:
+                        succeeded, skipped, failed = 0, valid_before, 0
+                    valid_count = self._eligible_sheet_count(workbook, sheet_name)
                     if failed:
                         self.store.add_warning(
-                            task_id, f"关键词 {keyword} 有 {failed} 条口播提取失败"
+                            task_id,
+                            f"{source.value} 关键词 {keyword} "
+                            f"有 {failed} 条口播提取失败",
+                        )
+                    if valid_count < target_count:
+                        self.store.add_warning(
+                            task_id,
+                            f"TARGET_NOT_REACHED：{source.value} 关键词 {keyword} "
+                            f"目标 {target_count} 条，实际获得 {valid_count} 条有效口播",
                         )
                     self.store.update_pipeline_keyword(task_id, position, analyze_done=True)
                     self.store.update_progress(
                         task_id,
                         phase="analyze",
+                        source=source.value,
                         keyword=keyword,
                         transcript_succeeded=succeeded,
                         transcript_skipped=skipped,
                         transcript_failed=failed,
+                        valid_count=valid_count,
+                        remaining_target=max(target_count - valid_count, 0),
                     )
 
                 if not checkpoint["upload_done"]:
-                    await self._upload_sheet(task_id, workbook, excel_sheet_name(keyword))
+                    await self._upload_sheet(
+                        task_id,
+                        workbook,
+                        sheet_name,
+                        keyword=keyword,
+                        source=source,
+                        max_records=target_count,
+                    )
                     self.store.update_pipeline_keyword(task_id, position, upload_done=True)
+                self.store.update_pipeline_keyword(task_id, position, last_error=None)
                 successful_keywords += 1
-                self._log(task_id, f"关键词完成：{keyword}")
+                source_counts[source.value]["succeeded"] += 1
+                self._log(task_id, f"{source.value} 关键词完成：{keyword}")
             except TaskPaused:
                 raise
             except Exception as exc:
                 self.store.update_pipeline_keyword(
                     task_id, position, last_error=str(exc)
                 )
-                self.store.add_warning(task_id, f"关键词 {keyword} 处理失败：{exc}")
-                self._log(task_id, f"关键词失败，继续下一个：{keyword}：{exc}")
+                source_counts[source.value]["failed"] += 1
+                self.store.add_warning(
+                    task_id, f"{source.value} 关键词 {keyword} 处理失败：{exc}"
+                )
+                self._log(
+                    task_id,
+                    f"{source.value} 关键词失败，继续下一个：{keyword}：{exc}",
+                )
 
         if successful_keywords == 0:
             raise RuntimeError("全部关键词处理失败")
@@ -557,13 +849,86 @@ class ApiTaskService:
             "keywords_total": len(checkpoints),
             "keywords_succeeded": successful_keywords,
             "keywords_failed": len(checkpoints) - successful_keywords,
+            "data_source": request.data_source.value,
+            "target_per_keyword": target_count,
+            "candidate_limit_per_keyword": candidate_limit,
+            "sources": source_counts,
             "artifact": self._artifact(workbook),
         }
         self.store.finish(task_id, result=result, artifact_path=workbook)
         self._log(task_id, "流水线任务完成")
 
+    @staticmethod
+    def _pipeline_specification(
+        source: PipelineDataSource,
+        keyword: str,
+        used_sheet_names: set[str],
+    ) -> dict[str, str]:
+        sheet_name = pipeline_sheet_name(source, keyword)
+        collision_index = 0
+        while sheet_name in used_sheet_names:
+            collision_index += 1
+            digest = hashlib.sha1(
+                f"{source.value}\0{keyword}\0{collision_index}".encode("utf-8")
+            ).hexdigest()[:8]
+            base = excel_sheet_name(f"{source.value}_{keyword}")
+            sheet_name = f"{base[:22]}_{digest}"
+        used_sheet_names.add(sheet_name)
+        return {
+            "source": source.value,
+            "keyword": keyword,
+            "sheet_name": sheet_name,
+        }
+
+    @staticmethod
+    def _upload_values_eligible(values: dict[str, Any]) -> bool:
+        return all(
+            str(values[name] or "").strip()
+            for name in ("videoName", "videoUrl", "authorName", "videoOral")
+        )
+
+    def _eligible_sheet_count(self, workbook: Path, sheet_name: str) -> int:
+        """Count rows that currently satisfy the downstream upload contract."""
+
+        with workbook_lock(workbook):
+            book = load_workbook(workbook, read_only=True, data_only=True)
+            try:
+                if sheet_name not in book.sheetnames:
+                    raise RuntimeError(f"Excel 中不存在 Sheet：{sheet_name}")
+                sheet = book[sheet_name]
+                headers = [str(cell.value or "").strip() for cell in sheet[1]]
+                if REQUIRED_UPLOAD_HEADERS["videoOral"] not in headers:
+                    return 0
+                positions = {
+                    name: headers.index(header)
+                    for name, header in REQUIRED_UPLOAD_HEADERS.items()
+                    if header in headers
+                }
+                missing = set(REQUIRED_UPLOAD_HEADERS) - set(positions)
+                if missing:
+                    raise RuntimeError(
+                        f"Excel 缺少发送字段：{', '.join(sorted(missing))}"
+                    )
+                count = 0
+                for row in sheet.iter_rows(min_row=2, values_only=True):
+                    values = {
+                        name: row[index] if index < len(row) else None
+                        for name, index in positions.items()
+                    }
+                    if self._upload_values_eligible(values):
+                        count += 1
+                return count
+            finally:
+                book.close()
+
     def _sheet_payloads(
-        self, task_id: str, workbook: Path, sheet_name: str
+        self,
+        task_id: str,
+        workbook: Path,
+        sheet_name: str,
+        *,
+        keyword: str | None = None,
+        max_records: int | None = None,
     ) -> list[tuple[dict[str, Any], str]]:
         with workbook_lock(workbook):
             book = load_workbook(workbook, read_only=True, data_only=True)
@@ -577,21 +942,22 @@ class ApiTaskService:
                     for name, header in UPLOAD_HEADERS.items()
                     if header in headers
                 }
-                required_headers = set(UPLOAD_HEADERS) - set(positions)
+                required_headers = set(REQUIRED_UPLOAD_HEADERS) - set(positions)
                 if required_headers:
                     raise RuntimeError(f"Excel 缺少发送字段：{', '.join(sorted(required_headers))}")
                 output: list[tuple[dict[str, Any], str]] = []
                 for row_number, row in enumerate(
                     sheet.iter_rows(min_row=2, values_only=True), start=2
                 ):
-                    values = {
-                        name: row[index] if index < len(row) else None
-                        for name, index in positions.items()
-                    }
-                    if any(
-                        not str(values[name] or "").strip()
-                        for name in ("videoName", "videoUrl", "authorName", "videoOral")
-                    ):
+                    values = {}
+                    for name in UPLOAD_HEADERS:
+                        index = positions.get(name)
+                        values[name] = (
+                            row[index]
+                            if index is not None and index < len(row)
+                            else None
+                        )
+                    if not self._upload_values_eligible(values):
                         continue
                     follower_count, warned = parse_follower_count(values["followerCount"])
                     if warned:
@@ -599,7 +965,10 @@ class ApiTaskService:
                             task_id,
                             f"{sheet_name} 第 {row_number} 行粉丝数无法解析，按 0 发送",
                         )
-                    payload: dict[str, Any] = {"type": 0, "keyword": sheet_name}
+                    payload: dict[str, Any] = {
+                        "type": 0,
+                        "keyword": keyword or sheet_name,
+                    }
                     for name in UPLOAD_HEADERS:
                         if name == "followerCount":
                             payload[name] = follower_count
@@ -611,19 +980,40 @@ class ApiTaskService:
                     output.append(
                         (payload, hashlib.sha256(serialized.encode("utf-8")).hexdigest())
                     )
+                    if max_records is not None and len(output) >= max_records:
+                        break
                 return output
             finally:
                 book.close()
 
     async def _upload_sheet(
-        self, task_id: str, workbook: Path, sheet_name: str
+        self,
+        task_id: str,
+        workbook: Path,
+        sheet_name: str,
+        *,
+        keyword: str | None = None,
+        source: PipelineDataSource | str = PipelineDataSource.HOTSPOT,
+        max_records: int | None = None,
     ) -> dict[str, int]:
-        payloads = self._sheet_payloads(task_id, workbook, sheet_name)
+        source = PipelineDataSource(source)
+        payloads = self._sheet_payloads(
+            task_id,
+            workbook,
+            sheet_name,
+            keyword=keyword,
+            max_records=max_records,
+        )
+        delivery_keyword = (
+            sheet_name
+            if source == PipelineDataSource.HOTSPOT
+            else f"industry:{sheet_name}"
+        )
         pending = [
             (payload, digest)
             for payload, digest in payloads
             if not self.store.delivery_sent(
-                task_id, sheet_name, payload["videoUrl"], digest
+                task_id, delivery_keyword, payload["videoUrl"], digest
             )
         ]
         already_sent = len(payloads) - len(pending)
@@ -632,12 +1022,17 @@ class ApiTaskService:
             self._raise_if_paused(task_id)
             batch = pending[offset : offset + self.settings.upload_batch_size]
             try:
-                await self.client.upload_rankings([payload for payload, _ in batch])
+                upload = (
+                    self.client.upload_rankings
+                    if source == PipelineDataSource.HOTSPOT
+                    else self.client.upload_industry_rankings
+                )
+                await upload([payload for payload, _ in batch])
             except Exception as exc:
                 self.store.mark_deliveries_failed(
                     task_id,
                     [
-                        (sheet_name, payload["videoUrl"], digest)
+                        (delivery_keyword, payload["videoUrl"], digest)
                         for payload, digest in batch
                     ],
                     str(exc),
@@ -645,7 +1040,8 @@ class ApiTaskService:
                 self.store.update_progress(
                     task_id,
                     phase="upload",
-                    keyword=sheet_name,
+                    source=source.value,
+                    keyword=keyword or sheet_name,
                     sent=sent,
                     total=len(payloads),
                 )
@@ -653,7 +1049,7 @@ class ApiTaskService:
             self.store.mark_deliveries_sent(
                 task_id,
                 [
-                    (sheet_name, payload["videoUrl"], digest)
+                    (delivery_keyword, payload["videoUrl"], digest)
                     for payload, digest in batch
                 ],
             )
@@ -661,7 +1057,8 @@ class ApiTaskService:
             self.store.update_progress(
                 task_id,
                 phase="upload",
-                keyword=sheet_name,
+                source=source.value,
+                keyword=keyword or sheet_name,
                 sent=sent,
                 total=len(payloads),
             )

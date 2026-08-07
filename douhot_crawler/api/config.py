@@ -24,9 +24,15 @@ class ApiSettings(BaseSettings):
     hotspot_api_url: AnyHttpUrl = Field(
         validation_alias="DOUHOT_HOTSPOT_API_URL"
     )
+    industry_api_url: AnyHttpUrl = Field(
+        validation_alias="DOUHOT_INDUSTRY_API_URL"
+    )
     cookie_api_url: AnyHttpUrl = Field(validation_alias="DOUHOT_COOKIE_API_URL")
     ranking_api_url: AnyHttpUrl = Field(
         validation_alias="DOUHOT_RANKING_API_URL"
+    )
+    industry_ranking_api_url: AnyHttpUrl = Field(
+        validation_alias="DOUHOT_INDUSTRY_RANKING_API_URL"
     )
     extract_api_url: AnyHttpUrl = Field(validation_alias="EXTRACT_API_URL")
     hotspot_open_id: str = Field(
@@ -34,6 +40,9 @@ class ApiSettings(BaseSettings):
     )
     hotspot_size: Annotated[int, Field(ge=1, le=30)] = Field(
         default=30, validation_alias="DOUHOT_HOTSPOT_SIZE"
+    )
+    industry_size: Annotated[int, Field(ge=1, le=30)] = Field(
+        default=30, validation_alias="DOUHOT_INDUSTRY_SIZE"
     )
 
     data_root: Path = Field(
@@ -67,6 +76,10 @@ class ApiSettings(BaseSettings):
     max_videos_per_keyword: Annotated[int, Field(ge=1, le=500)] = Field(
         default=3,
         validation_alias="DOUHOT_MAX_VIDEOS_PER_KEYWORD",
+    )
+    max_candidates_per_keyword: Annotated[int, Field(ge=1, le=500)] = Field(
+        default=15,
+        validation_alias="DOUHOT_MAX_CANDIDATES_PER_KEYWORD",
     )
     upload_batch_size: Literal[20] = 20
 

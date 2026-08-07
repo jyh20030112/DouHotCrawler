@@ -1,0 +1,275 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1120">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap');
+    text { font-family: 'JetBrains Mono', 'Noto Sans SC', 'PingFang SC', sans-serif; }
+    .title { fill: #f8fafc; font-size: 22px; font-weight: 700; }
+    .subtitle { fill: #94a3b8; font-size: 11px; }
+    .region-title { font-size: 11px; font-weight: 700; }
+    .name { fill: #f8fafc; font-size: 12px; font-weight: 700; text-anchor: middle; }
+    .desc { fill: #94a3b8; font-size: 9px; text-anchor: middle; }
+    .tiny { fill: #cbd5e1; font-size: 8px; }
+    .edge-label { fill: #e2e8f0; font-size: 8px; font-weight: 600; }
+  </style>
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+    </pattern>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/>
+    </marker>
+    <marker id="arrow-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee"/>
+    </marker>
+    <marker id="arrow-emerald" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#34d399"/>
+    </marker>
+    <marker id="arrow-amber" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24"/>
+    </marker>
+    <marker id="arrow-rose" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#fb7185"/>
+    </marker>
+    <marker id="arrow-open" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polyline points="0 0, 10 3.5, 0 7" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1600" height="1120" fill="#0f172a"/>
+  <rect width="1600" height="1120" fill="url(#grid)"/>
+
+  <!-- Regions -->
+  <rect x="250" y="90" width="1100" height="900" rx="16" fill="rgba(15,23,42,0.5)" stroke="#fbbf24" stroke-width="1.2" stroke-dasharray="10,5"/>
+  <text x="270" y="115" fill="#fbbf24" class="region-title">DOUHOT FASTAPI SERVICE · 单进程 / 单 Worker</text>
+  <rect x="300" y="340" width="990" height="500" rx="14" fill="rgba(6,78,59,0.10)" stroke="#34d399" stroke-width="1" stroke-dasharray="7,4"/>
+  <text x="320" y="365" fill="#34d399" class="region-title">PER KEYWORD · 严格串行，阶段之间释放 Excel 锁</text>
+
+  <!-- Connectors: entry and queue -->
+  <path d="M 220 180 L 300 180" fill="none" stroke="#22d3ee" stroke-width="2" marker-end="url(#arrow-cyan)"/>
+  <path d="M 220 285 L 265 285 L 265 205 L 300 205" fill="none" stroke="#22d3ee" stroke-width="1.6" marker-end="url(#arrow-cyan)"/>
+  <path d="M 490 185 L 560 185" fill="none" stroke="#fb923c" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 740 185 L 810 185" fill="none" stroke="#fb923c" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 990 185 L 1060 185" fill="none" stroke="#34d399" stroke-width="2" marker-end="url(#arrow-emerald)"/>
+
+  <!-- Keyword APIs -->
+  <path d="M 1280 170 L 1380 170" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path d="M 1280 205 L 1330 205 L 1330 270 L 1380 270" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path d="M 1170 225 L 1170 300 L 435 300 L 435 410" fill="none" stroke="#34d399" stroke-width="2" marker-end="url(#arrow-emerald)"/>
+
+  <!-- Cookie service connections -->
+  <path d="M 220 475 L 280 475 L 280 450 L 340 450" fill="none" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+  <path d="M 220 500 L 285 500 L 285 530 L 820 530 L 820 450 L 850 450" fill="none" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+
+  <!-- Main per-keyword flow -->
+  <path d="M 530 450 L 610 450" fill="none" stroke="#34d399" stroke-width="2.2" marker-end="url(#arrow-emerald)"/>
+  <path d="M 780 450 L 850 450" fill="none" stroke="#34d399" stroke-width="2.2" marker-end="url(#arrow-emerald)"/>
+  <path d="M 1060 450 L 1095 450" fill="none" stroke="#34d399" stroke-width="2.2" marker-end="url(#arrow-emerald)"/>
+  <path d="M 1170 495 L 1170 555" fill="none" stroke="#fbbf24" stroke-width="1.8" marker-end="url(#arrow-amber)"/>
+  <text x="1181" y="530" class="edge-label">否</text>
+  <path d="M 1095 600 L 815 600 L 815 450 L 850 450" fill="none" stroke="#60a5fa" stroke-width="1.6" marker-end="url(#arrow-cyan)"/>
+  <text x="875" y="592" class="edge-label">否 · 下一条候选</text>
+  <path d="M 1170 645 L 1170 700" fill="none" stroke="#fbbf24" stroke-width="1.8" marker-end="url(#arrow-amber)"/>
+  <text x="1182" y="677" class="edge-label">是</text>
+  <path d="M 1095 450 L 1005 450 L 1005 670 L 925 670 L 925 700" fill="none" stroke="#34d399" stroke-width="2" marker-end="url(#arrow-emerald)"/>
+  <text x="1015" y="475" class="edge-label">是 · 达到目标</text>
+  <path d="M 1050 735 L 1025 735 L 1025 770 L 925 770" fill="none" stroke="#fbbf24" stroke-width="1.8" marker-end="url(#arrow-amber)"/>
+
+  <!-- Excel is also read by upload -->
+  <path d="M 695 500 L 695 800 L 830 800 L 830 770" fill="none" stroke="#a78bfa" stroke-width="1.4" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+  <text x="705" y="790" class="edge-label">读取前 N 条合格行</text>
+
+  <!-- Upload destinations -->
+  <path d="M 1020 720 L 1320 720 L 1320 670 L 1380 670" fill="none" stroke="#22d3ee" stroke-width="1.8" marker-end="url(#arrow-cyan)"/>
+  <path d="M 1020 750 L 1320 750 L 1320 785 L 1380 785" fill="none" stroke="#22d3ee" stroke-width="1.8" marker-end="url(#arrow-cyan)"/>
+  <text x="1240" y="710" class="edge-label">hotspot</text>
+  <text x="1235" y="777" class="edge-label">industry</text>
+
+  <!-- Persistence and pause paths -->
+  <path d="M 650 225 L 650 870" fill="none" stroke="#a78bfa" stroke-width="1.3" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+  <path d="M 435 490 L 435 920 L 500 920" fill="none" stroke="#a78bfa" stroke-width="1.2" stroke-dasharray="4,4" marker-end="url(#arrow)"/>
+  <path d="M 925 770 L 925 850 L 740 850 L 740 920" fill="none" stroke="#a78bfa" stroke-width="1.2" stroke-dasharray="4,4" marker-end="url(#arrow)"/>
+  <path d="M 955 490 L 955 880" fill="none" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="6,4" marker-end="url(#arrow-rose)"/>
+  <path d="M 1000 770 L 1080 880" fill="none" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="6,4" marker-end="url(#arrow-rose)"/>
+  <path d="M 850 920 L 790 920 L 790 250 L 900 250 L 900 225" fill="none" stroke="#94a3b8" stroke-width="1.4" stroke-dasharray="4,4" marker-end="url(#arrow-open)"/>
+  <text x="800" y="280" class="edge-label">resume → 重新排队</text>
+
+  <!-- Opaque masks and component boxes -->
+  <g>
+    <rect x="40" y="145" width="180" height="70" rx="8" fill="#0f172a"/>
+    <rect x="40" y="145" width="180" height="70" rx="8" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+    <text x="130" y="173" class="name">API 调用方</text>
+    <text x="130" y="192" class="desc">POST /api/v1/tasks/pipeline</text>
+  </g>
+  <g>
+    <rect x="40" y="250" width="180" height="70" rx="8" fill="#0f172a"/>
+    <rect x="40" y="250" width="180" height="70" rx="8" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+    <text x="130" y="278" class="name">触发器</text>
+    <text x="130" y="297" class="desc">内置调度 / douhot-daily</text>
+  </g>
+  <g>
+    <rect x="300" y="145" width="190" height="80" rx="8" fill="#0f172a"/>
+    <rect x="300" y="145" width="190" height="80" rx="8" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+    <text x="395" y="176" class="name">FastAPI</text>
+    <text x="395" y="195" class="desc">参数校验 / 活动任务去重</text>
+    <text x="395" y="211" class="desc">候选上限 ≥ 有效口播目标</text>
+  </g>
+  <g>
+    <rect x="560" y="145" width="180" height="80" rx="8" fill="#0f172a"/>
+    <rect x="560" y="145" width="180" height="80" rx="8" fill="rgba(251,146,60,0.25)" stroke="#fb923c" stroke-width="1.5"/>
+    <text x="650" y="176" class="name">SQLite FIFO</text>
+    <text x="650" y="195" class="desc">queued / running / paused</text>
+    <text x="650" y="211" class="desc">持久化任务队列</text>
+  </g>
+  <g>
+    <rect x="810" y="145" width="180" height="80" rx="8" fill="#0f172a"/>
+    <rect x="810" y="145" width="180" height="80" rx="8" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+    <text x="900" y="176" class="name">单 Worker</text>
+    <text x="900" y="195" class="desc">全局严格串行</text>
+    <text x="900" y="211" class="desc">一次只执行一个任务</text>
+  </g>
+  <g>
+    <rect x="1060" y="145" width="220" height="80" rx="8" fill="#0f172a"/>
+    <rect x="1060" y="145" width="220" height="80" rx="8" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+    <text x="1170" y="174" class="name">关键词编排器</text>
+    <text x="1170" y="194" class="desc">all：先 hotspot，后 industry</text>
+    <text x="1170" y="210" class="desc">关键词之间不并发</text>
+  </g>
+
+  <!-- External keyword and cookie services -->
+  <g>
+    <rect x="1380" y="135" width="185" height="70" rx="8" fill="#0f172a"/>
+    <rect x="1380" y="135" width="185" height="70" rx="8" fill="rgba(30,41,59,0.6)" stroke="#94a3b8" stroke-width="1.4"/>
+    <text x="1472" y="163" class="name">热点关键词接口</text>
+    <text x="1472" y="183" class="desc">hotspotList · 默认 30 个</text>
+  </g>
+  <g>
+    <rect x="1380" y="235" width="185" height="70" rx="8" fill="#0f172a"/>
+    <rect x="1380" y="235" width="185" height="70" rx="8" fill="rgba(30,41,59,0.6)" stroke="#94a3b8" stroke-width="1.4"/>
+    <text x="1472" y="263" class="name">行业关键词接口</text>
+    <text x="1472" y="283" class="desc">industryNameList · 默认 30 个</text>
+  </g>
+  <g>
+    <rect x="40" y="440" width="180" height="90" rx="8" fill="#0f172a"/>
+    <rect x="40" y="440" width="180" height="90" rx="8" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+    <text x="130" y="468" class="name">Cookie 配置接口</text>
+    <text x="130" y="489" class="desc">type=0 → DouHot</text>
+    <text x="130" y="506" class="desc">type=1 → Douyin</text>
+  </g>
+
+  <!-- Per-keyword components -->
+  <g>
+    <rect x="340" y="410" width="190" height="80" rx="8" fill="#0f172a"/>
+    <rect x="340" y="410" width="190" height="80" rx="8" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.6"/>
+    <text x="435" y="439" class="name">候选爬取</text>
+    <text x="435" y="459" class="desc">一次最多 15 条（可配置）</text>
+    <text x="435" y="476" class="desc">Playwright · type=0 Cookie</text>
+  </g>
+
+  <g transform="translate(610,400)">
+    <rect x="0" y="12" width="170" height="76" rx="3" fill="#0f172a"/>
+    <ellipse cx="85" cy="12" rx="85" ry="13" fill="#0f172a"/>
+    <ellipse cx="85" cy="88" rx="85" ry="13" fill="#0f172a"/>
+    <rect x="0" y="12" width="170" height="76" fill="rgba(76,29,149,0.4)"/>
+    <ellipse cx="85" cy="12" rx="85" ry="13" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+    <ellipse cx="85" cy="88" rx="85" ry="13" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+    <line x1="0" y1="12" x2="0" y2="88" stroke="#a78bfa" stroke-width="1.5"/>
+    <line x1="170" y1="12" x2="170" y2="88" stroke="#a78bfa" stroke-width="1.5"/>
+    <text x="85" y="48" class="name">result.xlsx</text>
+    <text x="85" y="67" class="desc">原子保存 + 跨进程文件锁</text>
+  </g>
+
+  <g>
+    <rect x="850" y="410" width="210" height="80" rx="8" fill="#0f172a"/>
+    <rect x="850" y="410" width="210" height="80" rx="8" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.6"/>
+    <text x="955" y="438" class="name">串行口播提取</text>
+    <text x="955" y="458" class="desc">逐行调用 extract · type=1 Cookie</text>
+    <text x="955" y="475" class="desc">空口播 / 单条失败不计成功</text>
+  </g>
+
+  <g transform="translate(1170,450)">
+    <polygon points="0,-45 75,0 0,45 -75,0" fill="#0f172a"/>
+    <polygon points="0,-45 75,0 0,45 -75,0" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.6"/>
+    <text y="-5" class="name">有效口播</text>
+    <text y="13" class="name">达到 3 条？</text>
+    <text y="29" class="desc">目标可配置</text>
+  </g>
+
+  <g transform="translate(1170,600)">
+    <polygon points="0,-45 75,0 0,45 -75,0" fill="#0f172a"/>
+    <polygon points="0,-45 75,0 0,45 -75,0" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.6"/>
+    <text y="-3" class="name">候选已经</text>
+    <text y="15" class="name">全部处理？</text>
+  </g>
+
+  <g>
+    <rect x="1050" y="700" width="240" height="70" rx="8" fill="#0f172a"/>
+    <rect x="1050" y="700" width="240" height="70" rx="8" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+    <text x="1170" y="728" class="name">TARGET_NOT_REACHED</text>
+    <text x="1170" y="748" class="desc">发送已有 1–2 条；0 条不发 HTTP</text>
+  </g>
+
+  <g>
+    <rect x="830" y="700" width="190" height="70" rx="8" fill="#0f172a"/>
+    <rect x="830" y="700" width="190" height="70" rx="8" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.6"/>
+    <text x="925" y="728" class="name">榜单上传</text>
+    <text x="925" y="748" class="desc">前 N 条合格行 · 每批 20</text>
+  </g>
+
+  <g>
+    <rect x="1380" y="635" width="185" height="70" rx="8" fill="#0f172a"/>
+    <rect x="1380" y="635" width="185" height="70" rx="8" fill="rgba(30,41,59,0.6)" stroke="#94a3b8" stroke-width="1.4"/>
+    <text x="1472" y="663" class="name">热点榜数据库接口</text>
+    <text x="1472" y="683" class="desc">rankingViralVideo</text>
+  </g>
+  <g>
+    <rect x="1380" y="750" width="185" height="70" rx="8" fill="#0f172a"/>
+    <rect x="1380" y="750" width="185" height="70" rx="8" fill="rgba(30,41,59,0.6)" stroke="#94a3b8" stroke-width="1.4"/>
+    <text x="1472" y="778" class="name">行业榜数据库接口</text>
+    <text x="1472" y="798" class="desc">rankingViralVideoByIndustry</text>
+  </g>
+
+  <!-- State persistence -->
+  <g transform="translate(500,880)">
+    <rect x="0" y="12" width="240" height="68" rx="3" fill="#0f172a"/>
+    <ellipse cx="120" cy="12" rx="120" ry="13" fill="#0f172a"/>
+    <ellipse cx="120" cy="80" rx="120" ry="13" fill="#0f172a"/>
+    <rect x="0" y="12" width="240" height="68" fill="rgba(76,29,149,0.4)"/>
+    <ellipse cx="120" cy="12" rx="120" ry="13" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+    <ellipse cx="120" cy="80" rx="120" ry="13" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+    <line x1="0" y1="12" x2="0" y2="80" stroke="#a78bfa" stroke-width="1.5"/>
+    <line x1="240" y1="12" x2="240" y2="80" stroke="#a78bfa" stroke-width="1.5"/>
+    <text x="120" y="43" class="name">SQLite 状态与幂等记录</text>
+    <text x="120" y="62" class="desc">crawl/analyze/upload_done · deliveries</text>
+  </g>
+  <g>
+    <rect x="850" y="880" width="230" height="80" rx="8" fill="#0f172a"/>
+    <rect x="850" y="880" width="230" height="80" rx="8" fill="rgba(136,19,55,0.4)" stroke="#fb7185" stroke-width="1.5"/>
+    <text x="965" y="908" class="name">可恢复暂停</text>
+    <text x="965" y="928" class="desc">Cookie / 提取服务 / 上传故障</text>
+    <text x="965" y="945" class="desc">resume 后从检查点继续</text>
+  </g>
+
+  <!-- Notes and legend -->
+  <rect x="40" y="620" width="220" height="170" rx="10" fill="rgba(30,41,59,0.75)" stroke="#475569" stroke-width="1"/>
+  <text x="58" y="646" fill="#f8fafc" font-size="11" font-weight="700">上传资格</text>
+  <text x="58" y="670" class="tiny">✓ 视频名称</text>
+  <text x="58" y="690" class="tiny">✓ 视频分享 URL</text>
+  <text x="58" y="710" class="tiny">✓ 博主名称</text>
+  <text x="58" y="730" class="tiny">✓ 视频口播</text>
+  <text x="58" y="754" fill="#94a3b8" font-size="8">视频播放地址允许为空</text>
+  <text x="58" y="774" fill="#94a3b8" font-size="8">粉丝数解析失败按整数 0</text>
+
+  <g transform="translate(1120,900)">
+    <text x="0" y="0" fill="#f8fafc" font-size="10" font-weight="700">图例</text>
+    <line x1="0" y1="22" x2="45" y2="22" stroke="#34d399" stroke-width="2" marker-end="url(#arrow-emerald)"/>
+    <text x="58" y="25" class="tiny">主执行链路</text>
+    <line x1="0" y1="45" x2="45" y2="45" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+    <text x="58" y="48" class="tiny">存储 / Cookie / 检查点</text>
+    <line x1="0" y1="68" x2="45" y2="68" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="6,4" marker-end="url(#arrow-rose)"/>
+    <text x="58" y="71" class="tiny">系统故障暂停</text>
+  </g>
+
+  <!-- Title -->
+  <text x="40" y="45" class="title">DouHotCrawler 完整流水线拓扑</text>
+  <text x="40" y="68" class="subtitle">默认：每关键词 15 条候选 → 串行提取至 3 条有效口播 → 最多上传 3 条</text>
+</svg>

@@ -13,7 +13,7 @@ def main() -> None:
     base_url = os.environ.get("DOUHOT_DAILY_API_URL", "http://127.0.0.1:8000").rstrip("/")
     url = f"{base_url}/api/v1/tasks/pipeline"
     try:
-        response = httpx.post(url, json={}, timeout=30.0)
+        response = httpx.post(url, json={"data_source": "all"}, timeout=30.0)
         response.raise_for_status()
         payload = response.json()
     except (httpx.HTTPError, ValueError) as exc:

@@ -61,7 +61,9 @@ class ApiTaskStore:
                 CREATE TABLE IF NOT EXISTS pipeline_keywords (
                     task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
                     position INTEGER NOT NULL,
+                    source TEXT NOT NULL DEFAULT 'hotspot',
                     keyword TEXT NOT NULL,
+                    sheet_name TEXT,
                     crawl_done INTEGER NOT NULL DEFAULT 0,
                     analyze_done INTEGER NOT NULL DEFAULT 0,
                     upload_done INTEGER NOT NULL DEFAULT 0,
@@ -81,6 +83,25 @@ class ApiTaskStore:
                     PRIMARY KEY(task_id, keyword, video_url, payload_hash)
                 );
                 """
+            )
+            checkpoint_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(pipeline_keywords)"
+                ).fetchall()
+            }
+            if "source" not in checkpoint_columns:
+                connection.execute(
+                    "ALTER TABLE pipeline_keywords "
+                    "ADD COLUMN source TEXT NOT NULL DEFAULT 'hotspot'"
+                )
+            if "sheet_name" not in checkpoint_columns:
+                connection.execute(
+                    "ALTER TABLE pipeline_keywords ADD COLUMN sheet_name TEXT"
+                )
+            connection.execute(
+                "UPDATE pipeline_keywords SET sheet_name=keyword "
+                "WHERE sheet_name IS NULL OR sheet_name=''"
             )
             interrupted = connection.execute(
                 "SELECT id, kind FROM tasks WHERE status IN (?, ?)",
@@ -339,7 +360,11 @@ class ApiTaskStore:
             pause_reason=reason,
         )
 
-    def set_pipeline_keywords(self, task_id: str, keywords: list[str]) -> None:
+    def set_pipeline_keywords(
+        self,
+        task_id: str,
+        keywords: list[str | dict[str, str]],
+    ) -> None:
         with self._lock, self._connect() as connection:
             existing = connection.execute(
                 "SELECT COUNT(*) FROM pipeline_keywords WHERE task_id=?",
@@ -347,10 +372,22 @@ class ApiTaskStore:
             ).fetchone()[0]
             if existing:
                 return
+            rows = []
+            for index, item in enumerate(keywords):
+                if isinstance(item, str):
+                    source = "hotspot"
+                    keyword = item
+                    sheet_name = item
+                else:
+                    source = item["source"]
+                    keyword = item["keyword"]
+                    sheet_name = item["sheet_name"]
+                rows.append((task_id, index, source, keyword, sheet_name))
             connection.executemany(
-                "INSERT INTO pipeline_keywords(task_id, position, keyword) "
-                "VALUES (?, ?, ?)",
-                [(task_id, index, keyword) for index, keyword in enumerate(keywords)],
+                "INSERT INTO pipeline_keywords"
+                "(task_id, position, source, keyword, sheet_name) "
+                "VALUES (?, ?, ?, ?, ?)",
+                rows,
             )
 
     def pipeline_keywords(self, task_id: str) -> list[dict[str, Any]]:

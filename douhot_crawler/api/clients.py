@@ -36,7 +36,7 @@ class _CookieResponse(BaseModel):
 
 
 class ExternalApiClient:
-    """Typed clients for keyword, Cookie, and ranking external APIs."""
+    """Typed clients for keyword, Cookie, ranking, and callback external APIs."""
 
     def __init__(
         self,
@@ -118,24 +118,40 @@ class ExternalApiClient:
         raise ExternalServiceError(service, str(last_error or "请求失败"))
 
     async def fetch_keywords(self) -> list[str]:
-        raw = await self._post_json(
+        return await self._fetch_keywords(
             "热点关键词接口",
             self.settings.external_url("hotspot_api_url"),
-            {
-                "openId": self.settings.hotspot_open_id,
-                "size": self.settings.hotspot_size,
-            },
+            self.settings.hotspot_size,
+        )
+
+    async def fetch_industry_keywords(self) -> list[str]:
+        return await self._fetch_keywords(
+            "行业关键词接口",
+            self.settings.external_url("industry_api_url"),
+            self.settings.industry_size,
+        )
+
+    async def _fetch_keywords(
+        self,
+        service: str,
+        url: str,
+        size: int,
+    ) -> list[str]:
+        raw = await self._post_json(
+            service,
+            url,
+            {"openId": self.settings.hotspot_open_id, "size": size},
         )
         try:
             response = _HotspotResponse.model_validate(raw)
         except ValidationError as exc:
-            raise ExternalServiceError("热点关键词接口", "响应结构无效") from exc
+            raise ExternalServiceError(service, "响应结构无效") from exc
         if response.code != 200:
             raise ExternalServiceError(
-                "热点关键词接口", response.message or f"业务状态码 {response.code}"
+                service, response.message or f"业务状态码 {response.code}"
             )
         if response.data is None:
-            raise ExternalServiceError("热点关键词接口", "成功响应缺少 data")
+            raise ExternalServiceError(service, "成功响应缺少 data")
         keywords = list(
             dict.fromkeys(
                 record.title.strip()
@@ -143,7 +159,7 @@ class ExternalApiClient:
                 if record.title and record.title.strip()
             )
         )
-        return keywords[: self.settings.hotspot_size]
+        return keywords[:size]
 
     async def fetch_cookie(self, cookie_type: int) -> str:
         if cookie_type not in {0, 1}:
@@ -168,15 +184,79 @@ class ExternalApiClient:
         return cookie
 
     async def upload_rankings(self, records: list[dict[str, Any]]) -> None:
-        if not records:
-            return
-        raw = await self._post_json(
+        await self._upload_rankings(
             "榜单发送接口",
             self.settings.external_url("ranking_api_url"),
             records,
         )
+
+    async def upload_industry_rankings(
+        self, records: list[dict[str, Any]]
+    ) -> None:
+        await self._upload_rankings(
+            "行业榜单发送接口",
+            self.settings.external_url("industry_ranking_api_url"),
+            records,
+        )
+
+    async def _upload_rankings(
+        self,
+        service: str,
+        url: str,
+        records: list[dict[str, Any]],
+    ) -> None:
+        if not records:
+            return
+        raw = await self._post_json(
+            service,
+            url,
+            records,
+        )
         if isinstance(raw, dict) and "code" in raw and raw.get("code") != 200:
             raise ExternalServiceError(
-                "榜单发送接口",
+                service,
                 str(raw.get("message") or f"业务状态码 {raw.get('code')}"),
             )
+
+    async def send_callback(
+        self,
+        callback_url: str,
+        records: list[dict[str, Any]],
+        *,
+        task_id: str,
+    ) -> None:
+        """将最终榜单数组回调给调用方，任意 2xx 响应均视为成功。"""
+
+        delays = (0.0, 2.0, 5.0, 10.0)
+        last_error: Exception | None = None
+        for attempt, delay in enumerate(delays):
+            if delay:
+                await asyncio.sleep(delay)
+            try:
+                response = await self.client.post(
+                    callback_url,
+                    json=records,
+                    headers={
+                        "accept": "application/json",
+                        "X-DouHot-Task-ID": task_id,
+                    },
+                )
+            except httpx.RequestError as exc:
+                last_error = exc
+                if attempt < len(delays) - 1:
+                    continue
+                raise ExternalServiceError(
+                    "结果回调接口", f"网络请求失败：{exc}"
+                ) from exc
+
+            if response.status_code == 429 or response.status_code >= 500:
+                last_error = RuntimeError(f"HTTP {response.status_code}")
+                if attempt < len(delays) - 1:
+                    continue
+            if not 200 <= response.status_code < 300:
+                raise ExternalServiceError(
+                    "结果回调接口", f"HTTP {response.status_code}"
+                )
+            return
+
+        raise ExternalServiceError("结果回调接口", str(last_error or "请求失败"))
